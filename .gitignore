@@ -1,0 +1,28 @@
+build/
+*.o
+*.elf
+*.map
+*.gba
+*.sav
+*.bak
+
+# entornos locales (devkitpro / python tooling)
+.devkitpro/
+.venv-tools/
+.venv/
+
+# python caches
+__pycache__/
+*.pyc
+
+# vectores BIP-39 con mnemonic literal
+tests/
+
+# herramientas locales / IDE / agentes
+.cursor/
+mcps/
+
+# editor
+*.swp
+.vscode/
+.idea/
