@@ -1,0 +1,3 @@
+# This directory is populated by scripts/build_release.sh.
+# All produced artifacts (.gba / .zip / RELEASE_NOTES_v*.md) are
+# gitignored — only this .keep file is tracked so the directory exists.
