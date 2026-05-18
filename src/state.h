@@ -3,8 +3,8 @@
 
 #include <gba_types.h>
 
-/* Punto de entrada de la lógica de la wallet. Llama desde main() después
- * de inicializar IRQs / consola. Nunca retorna salvo en error fatal. */
+/* Entry point of the wallet logic. Call from main() after initializing
+ * IRQs / console. Never returns unless a fatal error occurs. */
 void wallet_run(void);
 
 #endif

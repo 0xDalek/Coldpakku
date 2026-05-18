@@ -4,18 +4,19 @@
 #include "../types.h"
 
 /*
- * Renderizado de texto en BG0 modo 0 con la consola de libgba.
- * Pantalla = 30 columnas x 20 filas.
+ * Text rendering on BG0 mode 0 using the libgba console.
+ * Screen = 30 columns x 20 rows.
  */
 
 #define TEXT_COLS 30
 #define TEXT_ROWS 20
 
-/* Esquemas de color (RGB15). El de phosphor green es el default tras text_init. */
+/* Colour schemes (RGB15). After text_init() the default is ORANGE. */
 typedef enum {
-    TEXT_SCHEME_PHOSPHOR,   /* verde sobre negro (default) */
-    TEXT_SCHEME_AMBER,      /* ámbar sobre negro (CRT IBM) */
-    TEXT_SCHEME_DEFAULT,    /* libgba default (azul) */
+    TEXT_SCHEME_ORANGE,     /* orange on black (default, "coldpakku" look) */
+    TEXT_SCHEME_AMBER,      /* amber on black (CRT IBM 5151) */
+    TEXT_SCHEME_PHOSPHOR,   /* P39 phosphor green on black */
+    TEXT_SCHEME_DEFAULT,    /* libgba default (blue) */
 } text_scheme;
 
 void text_init(void);
@@ -31,16 +32,28 @@ void text_printf_at(u32 col, u32 row, const char* fmt, ...);
 void text_hex(u32 col, u32 row, const u8* data, u32 len);
 void text_hex_short(u32 col, u32 row, const u8* data, u32 len, u32 head, u32 tail);
 
-/* Marco ASCII alrededor de un rectángulo. */
+/* ASCII frame around a rectangle. */
 void text_box(u32 col, u32 row, u32 width, u32 height);
 
-/* Barra de estado superior con título y subtítulo a la derecha (e.g. "READY"). */
+/* Top status bar with title and right-side status (e.g. "READY"). */
 void text_titlebar(const char* title, const char* status);
 
-/* Línea de status inferior (atajos de teclas). */
+/* Bottom status line (key hints). */
 void text_statusbar(const char* hints);
 
-/* Banner ASCII art de boot con efecto typewriter (espera vblanks entre líneas). */
-void text_boot_banner(void);
+/* Waits for N VBlanks (~16.7 ms each). Useful in cooperative transitions. */
+void text_wait_frames(u32 n);
+
+/* Prints a line with a typewriter effect (1 char/frame). If the user
+ * presses any key it flushes the rest at once. */
+void text_type_line(u32 col, u32 row, const char* s);
+
+/* Paints the COLDPAKKU logo (6 centred lines, one every 2 frames). The
+ * caller then displays the self-tests and the "press any key" screen. */
+void text_boot_logo(void);
+
+/* "press any key" wait with a blinking cursor at (28, 17). Returns when
+ * the user presses any key, or after `max_frames`. */
+void text_press_any_key(u32 max_frames);
 
 #endif

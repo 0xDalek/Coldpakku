@@ -1,11 +1,11 @@
-"""Bridge en la Raspberry Pi: expone el UART al PC vía socket TCP.
+"""Raspberry Pi bridge: exposes the UART to the PC over a TCP socket.
 
-Ejecutar en la Pi:
+Run on the Pi:
     python3 pc/pi_bridge.py --uart /dev/ttyS0 --listen 0.0.0.0:5555
 
-Desde el PC, montar el túnel SSH y usar como si fuese un mGBA local:
+From the PC, set up the SSH tunnel and use it as if it were a local mGBA:
     ssh -L 12345:127.0.0.1:5555 pi@raspi.local
-    # En otro shell del PC:
+    # In another shell on the PC:
     python3 pc/metamask_inject.py --port 12345 --rpc http://...
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ def relay(src: callable, dst: callable, label: str, stop: threading.Event) -> No
         try:
             data = src()
         except Exception as e:
-            print(f"[bridge] {label} fin: {e}")
+            print(f"[bridge] {label} done: {e}")
             stop.set()
             return
         if not data:
@@ -32,7 +32,7 @@ def relay(src: callable, dst: callable, label: str, stop: threading.Event) -> No
         try:
             dst(data)
         except Exception as e:
-            print(f"[bridge] {label} write fin: {e}")
+            print(f"[bridge] {label} write done: {e}")
             stop.set()
             return
 
@@ -41,7 +41,7 @@ def serve_one(ser: serial.Serial, conn: socket.socket) -> None:
     stop = threading.Event()
 
     def from_serial() -> bytes:
-        # readN con timeout corto para que el bucle pueda parar
+        # readN with a short timeout so the loop can exit
         return ser.read(256)
 
     def to_socket(b: bytes) -> None:
@@ -55,8 +55,8 @@ def serve_one(ser: serial.Serial, conn: socket.socket) -> None:
     def to_serial(b: bytes) -> None:
         ser.write(b); ser.flush()
 
-    t1 = threading.Thread(target=relay, args=(from_serial, to_socket, "ser→sock", stop), daemon=True)
-    t2 = threading.Thread(target=relay, args=(from_socket, to_serial, "sock→ser", stop), daemon=True)
+    t1 = threading.Thread(target=relay, args=(from_serial, to_socket, "ser->sock", stop), daemon=True)
+    t2 = threading.Thread(target=relay, args=(from_socket, to_serial, "sock->ser", stop), daemon=True)
     t1.start(); t2.start()
     stop.wait()
     try: conn.close()
@@ -73,19 +73,19 @@ def main() -> int:
     host, port = args.listen.split(":"); port = int(port)
     ser = serial.Serial(args.uart, baudrate=args.baud, bytesize=8,
                          parity=serial.PARITY_NONE, stopbits=1, timeout=0.1)
-    print(f"[bridge] UART {args.uart} @ {args.baud} abierto")
+    print(f"[bridge] UART {args.uart} @ {args.baud} open")
 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind((host, port)); s.listen(1)
-    print(f"[bridge] escuchando TCP {host}:{port}")
+    print(f"[bridge] listening on TCP {host}:{port}")
     while True:
         conn, addr = s.accept()
-        print(f"[bridge] cliente conectado desde {addr}")
+        print(f"[bridge] client connected from {addr}")
         try:
             serve_one(ser, conn)
         finally:
-            print(f"[bridge] cliente desconectado")
+            print(f"[bridge] client disconnected")
 
 
 if __name__ == "__main__":

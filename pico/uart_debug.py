@@ -1,12 +1,12 @@
-# UART debugger temporal para diagnosticar el cable Link <-> Pico.
+# Throwaway UART debugger to diagnose the Link <-> Pico cable.
 #
-# Reemplaza al main.py del bridge mientras debuggeamos. Cada 1 segundo
-# imprime cuantos bytes leyó del UART0 y un dump hex del primer chunk.
-# Tambien intenta varios baudrates por si la velocidad esta mal.
+# Replaces the bridge's main.py while debugging. Every second it prints
+# how many bytes it read from UART0 plus a hex dump of the first chunk.
+# It also tries several baudrates in case the speed is wrong.
 #
-# Uso (host):
+# Usage (host):
 #   PYTHONPATH=.venv-tools python3 -m mpremote connect /dev/ttyACM0 cp pico/uart_debug.py :main.py
-#   reset y escuchar con `cat /dev/ttyACM0`
+#   reset and listen with `cat /dev/ttyACM0`
 
 import sys
 import time
@@ -15,19 +15,19 @@ from machine import UART, Pin
 
 micropython.kbd_intr(-1)
 
-# Probamos 115200 primero (lo que esperamos del GBA en modo UART SIO)
+# Try 115200 first (what we expect from the GBA in UART SIO mode)
 print("=== UART DEBUG ===")
-print("ventana de rescate 2s (Ctrl-C para REPL)")
+print("rescue window 2s (Ctrl-C for REPL)")
 for _ in range(20):
     time.sleep_ms(100)
-print("ventana cerrada, kbd_intr desactivado")
+print("window closed, kbd_intr disabled")
 
 BAUDRATES = [115200, 57600, 38400, 9600]
 b_idx = 0
 
 uart = UART(0, baudrate=BAUDRATES[b_idx], bits=8, parity=None, stop=1,
             tx=Pin(0), rx=Pin(1), timeout=0, rxbuf=2048)
-print("escuchando UART0 a", BAUDRATES[b_idx], "baud")
+print("listening on UART0 at", BAUDRATES[b_idx], "baud")
 
 last_report = time.ticks_ms()
 total_bytes = 0
@@ -49,8 +49,8 @@ while True:
             sample = bytearray()
             total_bytes = 0
         else:
-            print("baud", BAUDRATES[b_idx], ": 0 bytes (silencio)")
-            # tras 5s de silencio, probar siguiente baudrate
+            print("baud", BAUDRATES[b_idx], ": 0 bytes (silence)")
+            # after 5s of silence, try the next baudrate
             try:
                 uart_silence_count
             except NameError:
@@ -59,7 +59,7 @@ while True:
             if uart_silence_count >= 5:
                 uart_silence_count = 0
                 b_idx = (b_idx + 1) % len(BAUDRATES)
-                print("=== rotando a baud", BAUDRATES[b_idx])
+                print("=== rotating to baud", BAUDRATES[b_idx])
                 uart.deinit()
                 uart = UART(0, baudrate=BAUDRATES[b_idx], bits=8, parity=None,
                             stop=1, tx=Pin(0), rx=Pin(1), timeout=0, rxbuf=2048)

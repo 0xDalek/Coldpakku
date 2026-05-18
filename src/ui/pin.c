@@ -15,8 +15,8 @@ static void render_chrome(const char* prompt) {
 }
 
 static void render_field(const u8* digits, int pos, u32 plen) {
-    /* fila 8: " > [*][*][_][_][_][_][_][_]"
-     * fila 10: editor del dígito actual */
+    /* row 8: " > [*][*][_][_][_][_][_][_]"
+     * row 10: editor for the current digit */
     char field[40];
     memset(field, ' ', sizeof(field));
     int j = 0;

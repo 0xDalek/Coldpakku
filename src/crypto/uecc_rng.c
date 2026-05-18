@@ -1,8 +1,9 @@
 /*
- * Wrapper para registrar nuestro RNG (basado en timers HW del GBA) como RNG
- * por defecto de micro-ecc. RFC 6979 elimina la necesidad de RNG en el
- * camino crítico, pero micro-ecc sigue exigiendo uno como anti-side-channel
- * en sign_deterministic; cualquier ruido (no necesariamente seguro) sirve.
+ * Wrapper to register our RNG (based on the GBA's hardware timers) as
+ * micro-ecc's default RNG. RFC 6979 removes the need for an RNG on the
+ * critical path, but micro-ecc still requires one as an
+ * anti-side-channel measure in sign_deterministic; any noise (not
+ * necessarily cryptographic) is enough.
  */
 #include "uECC.h"
 #include "crypto.h"

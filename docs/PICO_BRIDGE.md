@@ -1,64 +1,64 @@
-# Pi Pico bridge — GBA Link Cable a USB
+# Pi Pico bridge — GBA Link Cable to USB
 
-Guía paso a paso para conectar el GBA Signer a un PC vía un Raspberry Pi
-Pico (RP2040). Reemplaza al bridge antiguo basado en Raspberry Pi 3/4 +
-`/dev/ttyS0`. El Pico es más barato (4 EUR), no requiere SO completo y sus
-GPIO son 3.3V CMOS nativos — el mismo nivel eléctrico que el SIO del GBA en
-modo UART. **No hace falta level shifter**.
+Step-by-step guide for connecting GBA Signer to a PC through a Raspberry Pi
+Pico (RP2040). Replaces the old bridge based on a Raspberry Pi 3/4 +
+`/dev/ttyS0`. The Pico is cheaper (~4 EUR), needs no full OS, and its
+GPIOs are native 3.3 V CMOS — the same electrical level as the GBA's SIO
+in UART mode. **No level shifter is needed**.
 
-## Materia prima
+## Bill of materials
 
-- 1x Raspberry Pi Pico (cualquier variante: Pico, Pico W, Pico 2 — todas
-  tienen UART0 en GP0/GP1).
-- 1x cable USB micro-B (o USB-C si tienes Pico 2).
-- 1x cable Game Link AGB-005 sacrificable (los chinos en eBay valen). El
-  conector EXT del GBA es propietario, lo más fácil es cortar uno de los
-  extremos del cable y soldar a los pelados.
-- Multímetro con función de continuidad para identificar pin↔cable.
-- Soldador + 3 hilos jumper / o 3 cables Dupont hembra.
+- 1x Raspberry Pi Pico (any variant: Pico, Pico W, Pico 2 — all of them
+  expose UART0 on GP0/GP1).
+- 1x USB micro-B cable (or USB-C if you have a Pico 2).
+- 1x sacrificial Game Link AGB-005 cable (cheap Chinese ones on eBay
+  work). The GBA's EXT connector is proprietary; the easiest path is to
+  cut one end off the cable and solder to the bare wires.
+- A multimeter with continuity mode to identify pin↔wire mappings.
+- Soldering iron + 3 jumper wires, or 3 female Dupont leads.
 
-## Pinout del conector EXT del GBA
+## GBA EXT connector pinout
 
-Mirando al socket del GBA con la consola hacia arriba (lado donde se
-inserta el cable):
+Looking at the GBA's socket with the console facing up (the side where
+you insert the cable):
 
 ```
-| 2  4  6 |     pin 1 = VDD (3.3V de salida, current-limited)
-| 1  3  5 |     pin 2 = SO  (Serial Out, GBA TX) -- rojo en el Nintendo oficial
-                pin 3 = SI  (Serial In,  GBA RX) -- naranja
-                pin 4 = SD  (Serial Data, MULTI mode) -- marron
-                pin 5 = SC  (Serial Clock, MULTI/NORMAL) -- verde
-                pin 6 = GND -- azul
+| 1  3  5|     pin 1 = VDD (3.3V output, current-limited)
+| 2  4  6|     pin 2 = SO  (Serial Out, GBA TX)
+                pin 3 = SI  (Serial In,  GBA RX)
+                pin 4 = SD  (Serial Data, MULTI mode)
+                pin 5 = SC  (Serial Clock, MULTI/NORMAL)
+                pin 6 = GND --
 ```
 
-Fuente: GBATEK §AUX Link Port (Martin Korth) — referencia canónica.
+Source: GBATEK §AUX Link Port (Martin Korth) — the canonical reference.
 
-En modo UART (que es el que usa este firmware) sólo importan los pines
-**2 (SO)**, **3 (SI)** y **6 (GND)**. El resto se dejan al aire.
+In UART mode (which is what this firmware uses), only pins **2 (SO)**,
+**3 (SI)** and **6 (GND)** matter. The rest are left unconnected.
 
-> Aviso: los colores de arriba son los de Nintendo originales. Cables
-> clones suelen invertir colores aleatoriamente. **Verifica siempre con
-> multímetro** desde el conector EXT al extremo cortado: pinza rojo en el
-> pin del conector, otra pinza tocando cada hilo del cable hasta encontrar
-> continuidad.
+> Heads up: the colours above are the original Nintendo ones. Clone
+> cables often randomise the colour mapping. **Always verify with a
+> multimeter** from the EXT connector to the cut end: red probe on the
+> connector pin, the other probe touching each wire of the cable until
+> you find continuity.
 
-## Pinout del Raspberry Pi Pico
+## Raspberry Pi Pico pinout
 
-Vista superior (con la USB hacia arriba), header de 40 pines:
+Top view (USB facing up), 40-pin header:
 
-| Pico pin | GPIO | Función                  |
-|---------:|:----:|--------------------------|
-|   1      | GP0  | UART0 TX (al GBA SI)     |
-|   2      | GP1  | UART0 RX (del GBA SO)    |
-|   3      | GND  | tierra (al GBA GND)      |
-|  38      | GND  | tierra (alternativa)     |
-|  40      | VBUS | 5V del USB (NO conectar) |
-|  36      | 3V3  | 3.3V LDO (NO conectar)   |
+| Pico pin | GPIO | Function                  |
+|---------:|:----:|---------------------------|
+|   1      | GP0  | UART0 TX (to GBA SI)      |
+|   2      | GP1  | UART0 RX (from GBA SO)    |
+|   3      | GND  | ground (to GBA GND)       |
+|  38      | GND  | ground (alternative)      |
+|  40      | VBUS | 5V from USB (DO NOT wire) |
+|  36      | 3V3  | 3.3V LDO   (DO NOT wire)  |
 
-Datasheet RP2040 §2.19: GPIO son tolerantes a 3.3V, **no son 5V-tolerant**.
-El SIO del GBA emite 3.3V, así que vamos perfectos.
+RP2040 datasheet §2.19: GPIOs are 3.3 V tolerant, **not 5 V tolerant**.
+The GBA's SIO drives 3.3 V, so we're aligned.
 
-## Esquema de conexión
+## Wiring diagram
 
 ```
                 +---- USB micro-B ---- PC (/dev/ttyACM0)
@@ -67,16 +67,16 @@ El SIO del GBA emite 3.3V, así que vamos perfectos.
        |   Raspberry Pi    |
        |       Pico        |
        |                   |
-       |  GP0 (pin 1)  TX -+----- naranja --- pin 3 (SI) GBA EXT
-       |  GP1 (pin 2)  RX -+----- rojo    --- pin 2 (SO) GBA EXT
-       |  GND (pin 3)     -+----- azul    --- pin 6 (GND) GBA EXT
+       |  GP0 (pin 1)  TX -+----- orange --- pin 3 (SI) GBA EXT
+       |  GP1 (pin 2)  RX -+----- red    --- pin 2 (SO) GBA EXT
+       |  GND (pin 3)     -+----- blue   --- pin 6 (GND) GBA EXT
        +-------------------+
 
        NC: GBA pin 1 (VDD), pin 4 (SD), pin 5 (SC)
-       NC: Pico VBUS (pin 40), 3V3 (pin 36) — el Pico se alimenta solo por USB
+       NC: Pico VBUS (pin 40), 3V3 (pin 36) — the Pico is powered only over USB
 ```
 
-Mermaid equivalente:
+Mermaid equivalent:
 
 ```mermaid
 flowchart LR
@@ -92,81 +92,84 @@ flowchart LR
 
 ## Firmware
 
-Ruta más simple — **MicroPython**:
+Simplest route — **MicroPython**:
 
-1. Mantén pulsado **BOOTSEL** y conecta el USB. Aparece como un drive
-   `RPI-RP2`.
-2. Descarga la UF2 oficial desde
-   <https://micropython.org/download/RPI_PICO/>. Arrástrala al drive
-   `RPI-RP2`. El Pico se reinicia y deja de exponerse como drive.
-3. Copia el `pico/main.py` de este repo al sistema de ficheros del Pico:
+1. Hold **BOOTSEL** and plug the USB cable. The Pico shows up as a drive
+   named `RPI-RP2`.
+2. Download the official UF2 from
+   <https://micropython.org/download/RPI_PICO/>. Drag it onto the
+   `RPI-RP2` drive. The Pico reboots and stops exposing itself as a
+   drive.
+3. Copy this repo's `pico/main.py` to the Pico's filesystem:
 
    ```bash
    pip install --user mpremote
    mpremote cp pico/main.py :main.py
    mpremote reset
    ```
-   o si prefieres GUI: usa Thonny (View → Files → guarda como `main.py` en
-   "Raspberry Pi Pico").
-4. Comprueba que aparece como serial:
+   or, if you prefer a GUI: use Thonny (View → Files → save as `main.py`
+   under "Raspberry Pi Pico").
+4. Check that it shows up as a serial device:
    ```bash
-   ls /dev/ttyACM*    # debe aparecer /dev/ttyACM0
+   ls /dev/ttyACM*    # should list /dev/ttyACM0
    ```
-5. Loopback rápido sin GBA: pon un cable corto entre GP0 y GP1 y prueba:
+5. Quick loopback without the GBA: connect a short jumper between GP0
+   and GP1 and run:
    ```bash
    python3 -c "import serial; s=serial.Serial('/dev/ttyACM0',115200,timeout=1); s.write(b'hello'); print(s.read(5))"
-   # esperado: b'hello'
+   # expected: b'hello'
    ```
-   Si esto funciona, el bridge está vivo. Quita el cable de loopback.
+   If this works, the bridge is alive. Remove the loopback jumper.
 
-Alternativa **firmware C nativo (más rapido)**:
-Flashea el UF2 precompilado de
+Alternative **native C firmware (faster)**:
+Flash the prebuilt UF2 from
 [Noltari/pico-uart-bridge](https://github.com/Noltari/pico-uart-bridge):
-mismo cableado, latencias más consistentes a 115200, no requiere
-MicroPython. Útil si el throughput sostenido te da problemas (en este
-proyecto enviamos como mucho 4 KB por tx, no debería notarse).
+same wiring, more consistent latency at 115200, no MicroPython needed.
+Useful if sustained throughput causes trouble (this project sends at
+most 4 KB per tx, so you shouldn't notice).
 
-## Pruebas integradas
+## End-to-end test
 
-Una vez todo conectado y la ROM `gba-signer.gba` corriendo en el GBA:
+Once everything is connected and the `gba-signer.gba` ROM is running on
+the GBA:
 
 ```bash
-# Lanza el host con la nueva variante "serial":
+# Run the host with the new "serial" transport:
 PYTHONPATH=.venv-tools:pc python3 pc/metamask_inject.py \
     --rpc https://rpc.sepolia.org \
     --transport serial --serial-port /dev/ttyACM0 \
     --to 0x000000000000000000000000000000000000dEaD \
     --value-wei 1000000000000000 \
-    --address-from 0xTU_ADDRESS_DERIVADA \
+    --address-from 0xYOUR_DERIVED_ADDRESS \
     --no-broadcast
 ```
 
-El GBA mostrará la pantalla CONFIRM TX con todos los campos parseados. Si
-pulsas **A** firma; si pulsas **B** cancela. La salida del PC imprimirá la
-firma recuperada.
+The GBA shows the CONFIRM TX screen with all the parsed fields. Press
+**A** to sign, **B** to cancel. The PC output prints the recovered
+signature.
 
 ## Troubleshooting
 
-| Síntoma | Causa probable |
+| Symptom | Likely cause |
 |---|---|
-| `/dev/ttyACM0` no aparece | El Pico está en modo BOOTSEL todavía, o no se ha copiado `main.py`. Reinicia con `mpremote reset`. |
-| Bytes corruptos / framing errors | TX y RX cruzados. Recuerda: GBA SO va a Pico RX, GBA SI viene del Pico TX. |
-| GBA no responde a READY | GND no conectado, o el cable Link tiene los hilos en otros colores que los oficiales. Verifica continuidad con multímetro pin a pin. |
-| Funciona uno o dos segundos y se cuelga | El loop MicroPython puede saturarse. Cambia a `Noltari/pico-uart-bridge` para latencia constante. |
-| Velocidad insuficiente para tx > 1 KB | Sube `BUF_SIZE` en `pico/main.py` a 256, o flashea el firmware C. |
+| `/dev/ttyACM0` does not appear | The Pico is still in BOOTSEL mode, or `main.py` was not copied. Reboot it with `mpremote reset`. |
+| Garbled bytes / framing errors | TX and RX swapped. Remember: GBA SO goes to Pico RX, GBA SI comes from Pico TX. |
+| GBA never answers READY | GND not connected, or the Link cable uses non-standard wire colours. Verify continuity pin-by-pin with a multimeter. |
+| Works for a second or two then hangs | The MicroPython loop can stall. Switch to `Noltari/pico-uart-bridge` for stable latency. |
+| Not enough bandwidth for tx > 1 KB | Bump `BUF_SIZE` in `pico/main.py` to 256, or flash the C firmware. |
 
-## Por qué Pico y no Raspberry Pi grande
+## Why a Pico and not a full-size Raspberry Pi
 
-| Cosa | Pi 3/4/5 | Pi Pico |
+| Thing | Pi 3/4/5 | Pi Pico |
 |---|---|---|
-| Coste | ~50 EUR | ~4 EUR |
-| Setup | flashear SD + Linux + servicio systemd | drag&drop UF2 + main.py |
-| Niveles GPIO | 3.3V (compatible) | 3.3V (compatible) |
-| Latencia UART | ~5 ms (kernel) | ~µs (bare-metal) |
-| Consumo | ~3 W idle | ~0.1 W |
-| Tamaño | 8.6 x 5.6 cm | 5.1 x 2.1 cm |
-| Necesita SSH/red | sí | no |
+| Cost | ~50 EUR | ~4 EUR |
+| Setup | flash SD + Linux + systemd service | drag&drop UF2 + main.py |
+| GPIO levels | 3.3V (compatible) | 3.3V (compatible) |
+| UART latency | ~5 ms (kernel) | ~µs (bare-metal) |
+| Power draw | ~3 W idle | ~0.1 W |
+| Size | 8.6 x 5.6 cm | 5.1 x 2.1 cm |
+| Needs SSH/network | yes | no |
 
-El único motivo para preferir un Pi grande es si quieres correr `web3.py`
-en el propio bridge. En este proyecto el host hace el grueso del trabajo,
-el bridge solo pasa bytes — y para eso el Pico es más simple.
+The only reason to prefer a big Pi is if you want to run `web3.py` on
+the bridge itself. In this project the host does all the heavy work and
+the bridge just forwards bytes — for that, the Pico is simpler.

@@ -1,9 +1,9 @@
 /*
- * Keccak-256 — implementación compacta (basada en la descripción FIPS-202).
- * Padding 0x01 (no 0x06 como SHA3-256). Salida = 32 bytes. Rate = 136 bytes.
+ * Keccak-256 — compact implementation (based on the FIPS-202 description).
+ * 0x01 padding (not 0x06 like SHA3-256). Output = 32 bytes. Rate = 136 bytes.
  *
- * Permutación: 24 rondas (Theta, Rho, Pi, Chi, Iota).
- * Estado: 25 lanes de 64 bits.
+ * Permutation: 24 rounds (Theta, Rho, Pi, Chi, Iota).
+ * State: 25 lanes of 64 bits.
  */
 #include "keccak256.h"
 
@@ -100,12 +100,12 @@ void keccak256_update(keccak256_ctx* ctx, const u8* data, u32 len) {
 }
 
 void keccak256_final(keccak256_ctx* ctx, u8 out[32]) {
-    /* padding multi-rate: agregar 0x01 al final del mensaje, 0x80 al final del bloque rate */
+    /* multi-rate padding: append 0x01 at the end of the message and 0x80 at the end of the rate block */
     memset(ctx->buf + ctx->buflen, 0, RATE - ctx->buflen);
     ctx->buf[ctx->buflen] |= 0x01;
     ctx->buf[RATE - 1]   |= 0x80;
     absorb_block(ctx->state, ctx->buf);
-    /* squeeze 32 bytes (los primeros 32 del estado, little-endian por lane) */
+    /* squeeze 32 bytes (the first 32 of the state, little-endian per lane) */
     for (u32 i = 0; i < 4; i++) {
         u64 v = ctx->state[i];
         for (u32 j = 0; j < 8; j++) out[i*8 + j] = (u8)(v >> (8 * j));

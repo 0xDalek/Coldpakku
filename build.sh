@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Alternativa a `make` para entornos sin Make instalado. Compila la ROM
-# usando solo arm-none-eabi-gcc + objcopy + gbafix.
+# Alternative to `make` for environments without Make installed. Compiles
+# the ROM using only arm-none-eabi-gcc + objcopy + gbafix.
 #
-# Uso:
+# Usage:
 #   export DEVKITPRO=/path/to/devkitpro
 #   export DEVKITARM=$DEVKITPRO/devkitARM
 #   ./build.sh
 
 set -euo pipefail
 
-: "${DEVKITPRO:?DEVKITPRO no definido}"
-: "${DEVKITARM:?DEVKITARM no definido}"
+: "${DEVKITPRO:?DEVKITPRO not set}"
+: "${DEVKITARM:?DEVKITARM not set}"
 
 PATH="$DEVKITARM/bin:$PATH"
 
@@ -63,7 +63,7 @@ LDFLAGS=(
 
 LIBS=(-lgba)
 
-# Sources compiladas en Thumb (modo por defecto)
+# Sources compiled in Thumb (default mode)
 SOURCES_C=(
     src/main.c
     src/state.c
@@ -73,6 +73,8 @@ SOURCES_C=(
     src/ui/pin.c
     src/ui/progress.c
     src/ui/confirm.c
+    src/ui/splash.c
+    src/ui/chains.c
     src/crypto/sha512.c
     src/crypto/hmac_sha512.c
     src/crypto/hmac_sha256.c
@@ -82,16 +84,19 @@ SOURCES_C=(
     src/crypto/ethereum.c
     src/crypto/rlp.c
     src/crypto/eth_tx.c
+    src/crypto/eth_abi.c
     src/crypto/uecc_rng.c
     src/crypto/chacha20.c
     src/storage/sram.c
     src/storage/session.c
+    src/storage/policy.c
     src/link/uart.c
     src/link/protocol.c
+    src/link/tx_meta.c
     third_party/crypto-algorithms/sha256.c
 )
 
-# Sources compiladas en ARM mode (más rápidas o con asm ARM-only)
+# Sources compiled in ARM mode (faster, or with ARM-only asm)
 SOURCES_C_ARM=(
     src/crypto/pbkdf2.c
     third_party/micro-ecc/uECC.c
@@ -133,13 +138,13 @@ echo "  objcopy $TARGET.gba"
 if command -v gbafix >/dev/null 2>&1; then
     gbafix "$ROOT/$TARGET.gba" -tGBA_SIGNER -cGSIE -m00
 elif [ -f "$ROOT/tools/gbafix.py" ]; then
-    # Fallback: implementación pura Python (evita que la ROM se quede en la
-    # pantalla del logo de Nintendo en hardware real cuando devkitPro no
-    # incluye la herramienta `gbafix` en el PATH).
-    echo "  gbafix.py (devkitPro gbafix no encontrado, usando fallback python)"
+    # Fallback: pure-Python implementation (prevents the ROM from getting
+    # stuck on the Nintendo logo screen on real hardware when devkitPro
+    # does not ship the `gbafix` tool on PATH).
+    echo "  gbafix.py (devkitPro gbafix not found, using python fallback)"
     python3 "$ROOT/tools/gbafix.py" "$ROOT/$TARGET.gba" -t GBA_SIGNER -c GSIE -m 00
 else
-    echo "WARNING: gbafix no disponible. La ROM no arrancará en hardware real."
+    echo "WARNING: gbafix not available. The ROM will not boot on real hardware."
 fi
 
 ls -la "$ROOT/$TARGET.gba"

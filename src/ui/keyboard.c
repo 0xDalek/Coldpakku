@@ -1,21 +1,24 @@
 /*
- * Entrada de 12 palabras BIP39 — modo letter-wheel estilo Ledger.
+ * Entry of the 12 BIP-39 words — letter-wheel mode in the style of Ledger.
  *
- *   - Hay un "prefijo" de 0..8 letras que el usuario va construyendo.
- *   - Una de las posiciones del prefijo es la "letra activa" (entre [ ]).
- *   - D-pad arriba/abajo cambia esa letra entre A-Z (carrousel).
- *   - D-pad izq/der mueve el cursor entre posiciones del prefijo.
- *     Si pulsas DERECHA estando en la última posición, se añade una nueva
- *     letra en posicion+1 con valor 'a' por defecto.
- *   - B borra la letra activa (o la última si estás "fuera" del prefijo).
- *   - Cada cambio de prefijo recalcula la lista de candidatas BIP39.
- *   - L/R navegan la lista de candidatas (la "destacada" entre >> [ ] <<).
- *   - A acepta la candidata destacada.
- *   - SELECT vuelve al slot anterior; START cancela toda la sesión.
+ *   - There is a "prefix" of 0..8 letters the user is building.
+ *   - One of the prefix positions is the "active letter" (between [ ]).
+ *   - D-pad up/down rotates that letter through A-Z (carousel).
+ *   - D-pad left/right moves the cursor between prefix positions.
+ *     If you press RIGHT while in the last position, a new letter is
+ *     appended at position+1 with a default value of 'a'.
+ *   - B deletes the active letter (or the last one if you are "outside"
+ *     the prefix).
+ *   - Every prefix change recomputes the list of BIP-39 candidates.
+ *   - L/R navigate the candidate list (the "highlighted" one is between
+ *     >> [ ] <<).
+ *   - A accepts the highlighted candidate.
+ *   - SELECT goes back to the previous slot; START cancels the whole
+ *     session.
  *
- * Sin redibujo masivo: dirty-flags por región. Las palabras introducidas
- * NO se ven durante el input. Al final aparece una pantalla REVIEW con
- * las 12 palabras y permite editar cualquiera.
+ * No mass redraws: per-region dirty flags. The entered words are NOT
+ * shown during input. At the end a REVIEW screen appears with the 12
+ * words and lets you edit any of them.
  */
 #include "keyboard.h"
 #include "text.h"
@@ -28,12 +31,12 @@
 #include <string.h>
 
 #define MAX_PREFIX 8
-#define CANDS_CAP  24       /* 3 columnas x 8 filas en el grid */
+#define CANDS_CAP  24       /* 3 columns x 8 rows in the grid */
 
-/* Resultado de input_one_word(): */
+/* Result of input_one_word(): */
 #define IOW_PICKED  1
-#define IOW_BACK    2       /* SELECT pulsado, vuelve al slot anterior */
-#define IOW_CANCEL  0       /* START pulsado, cancela toda la sesion */
+#define IOW_BACK    2       /* SELECT pressed, go back to previous slot */
+#define IOW_CANCEL  0       /* START pressed, cancels the whole session */
 
 /* === renderers ============================================================ */
 
@@ -78,9 +81,9 @@ static void render_cands(const char* prefix, u32 plen,
         text_at(2, 6, "no matches yet");
         return;
     }
-    /* Si el prefijo coincide EXACTAMENTE con la primera palabra (siempre
-     * orden alfabetico, siempre cands[0]), avisamos para que el usuario
-     * sepa que puede pulsar A sin teclear mas. Caso clasico: 'can'. */
+    /* If the prefix matches EXACTLY the first word (always in
+     * alphabetical order, always cands[0]), we hint so the user knows
+     * they can press A without typing more. Classic case: 'can'. */
     int exact = (plen > 0 && ncands_total > 0 &&
                  strcmp(prefix, BIP39_WORDS[cands[0]]) == 0);
     if (exact) {
@@ -93,7 +96,7 @@ static void render_cands(const char* prefix, u32 plen,
     }
     text_at(0, 6, buf);
 
-    /* grid 3 cols x 8 filas, celda 10 chars (8 letra max + [/] o spaces) */
+    /* 3 cols x 8 rows grid, 10-char cell (8-letter max + [/] or spaces) */
     const u32 COLS = 3;
     for (u32 i = 0; i < ncands_shown; i++) {
         u32 row = 7 + (i / COLS);
@@ -125,7 +128,7 @@ static void render_pick(const u16* cands, u32 ncands, u32 highlight) {
     text_at(0, 16, buf);
 }
 
-/* === input loop para una sola palabra ===================================== */
+/* === input loop for a single word ========================================= */
 
 static int input_one_word(int slot_display, u16* out_picked) {
     char prefix[MAX_PREFIX + 1] = {0};
@@ -163,10 +166,10 @@ static int input_one_word(int slot_display, u16* out_picked) {
         if ((k & KEY_UP) || (k & KEY_DOWN)) {
             int delta = (k & KEY_UP) ? +1 : -1;
             if (cur_pos == plen) {
-                /* Crear nueva letra: empezar en la primera letra valida
-                 * en orden alfabetico (no necesariamente 'a' — ej. tras
-                 * "qu" la primera valida es 'a' pero tras "ze" no hay
-                 * ninguna y degeneraria). */
+                /* Create a new letter: start at the first valid letter
+                 * in alphabetical order (not necessarily 'a' — e.g.
+                 * after "qu" the first valid is 'a' but after "ze"
+                 * there is none and it would degenerate). */
                 if (plen < MAX_PREFIX) {
                     int found = 0;
                     for (int t = 0; t < 26; t++) {
@@ -177,15 +180,15 @@ static int input_one_word(int slot_display, u16* out_picked) {
                     if (found) {
                         plen++;
                     } else {
-                        prefix[plen] = 0;   /* deja como estaba */
+                        prefix[plen] = 0;   /* leave as it was */
                     }
                 }
             } else {
-                /* Editar letra existente: itera saltando letras que no
-                 * tengan ninguna palabra BIP39 con el prefijo resultante.
-                 * Asi nunca se ve "cb..." cuando ninguna palabra empieza
-                 * por cb. Proba hasta 26 letras; si ninguna funciona,
-                 * deja la letra como estaba. */
+                /* Edit existing letter: iterate skipping letters that
+                 * would leave no BIP-39 word matching the resulting
+                 * prefix. That way you never see "cb..." when no word
+                 * starts with cb. Tries up to 26 letters; if none
+                 * works, leaves the letter as it was. */
                 int original = prefix[cur_pos] - 'a';
                 int c = original;
                 int found = 0;
@@ -204,8 +207,8 @@ static int input_one_word(int slot_display, u16* out_picked) {
         if (k & KEY_RIGHT) {
             if (cur_pos < plen) { cur_pos++; dirty_wheel = 1; }
             else if (plen < MAX_PREFIX) {
-                /* Misma logica que UP/DOWN al crear letra: arrancar en la
-                 * primera letra valida, no en 'a' a ciegas. */
+                /* Same logic as UP/DOWN when creating a letter: start
+                 * at the first valid letter, not 'a' blindly. */
                 int found = 0;
                 for (int t = 0; t < 26; t++) {
                     prefix[plen]     = (char)('a' + t);
@@ -250,7 +253,7 @@ static int input_one_word(int slot_display, u16* out_picked) {
 
 static int review_screen(const u16* idx, int* edit_slot) {
     int dirty = 1;
-    int hl = -1;       /* >=0 = modo "elegir slot" */
+    int hl = -1;       /* >=0 = "pick slot" mode */
     while (1) {
         if (dirty) {
             text_clear();
@@ -314,9 +317,9 @@ int keyboard_input_words(u16 out_idx[BIP39_WORDS_COUNT]) {
             if (bip39_validate_words(out_idx)) return 1;
             text_clear();
             text_titlebar("BIP39 REVIEW", "ERROR");
-            text_at(2, 6, "!! checksum invalido");
-            text_at(2, 8, "  alguna palabra no");
-            text_at(2, 9, "  coincide con tu wallet.");
+            text_at(2, 6, "!! invalid checksum");
+            text_at(2, 8, "  one of the words does");
+            text_at(2, 9, "  not match your wallet.");
             text_statusbar("SEL re-review  B back to slot 12");
             for (;;) {
                 VBlankIntrWait();
@@ -328,11 +331,11 @@ int keyboard_input_words(u16 out_idx[BIP39_WORDS_COUNT]) {
             continue;
         }
 edit:
-        ; /* edita el slot indicado */
+        ; /* edit the selected slot */
         u16 picked = 0;
         int er = input_one_word(edit_slot, &picked);
         if (er == IOW_CANCEL) { text_clear(); return 0; }
         if (er == IOW_PICKED) out_idx[edit_slot] = picked;
-        /* IOW_BACK desde edit-mode: simplemente vuelve al review */
+        /* IOW_BACK from edit-mode: just goes back to the review */
     }
 }

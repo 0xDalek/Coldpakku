@@ -4,23 +4,23 @@
 #include "../types.h"
 
 /*
- * Decoder de transacciones Ethereum.
+ * Ethereum transaction decoder.
  *
- * Soporta:
- *   - Legacy (type 0): RLP plano [nonce, gasPrice, gasLimit, to, value,
+ * Supports:
+ *   - Legacy (type 0): plain RLP [nonce, gasPrice, gasLimit, to, value,
  *                                 data, chainId, 0, 0]
  *   - EIP-1559 (type 2): envelope 0x02 || RLP[chainId, nonce,
  *                       maxPriorityFeePerGas, maxFeePerGas, gasLimit,
  *                       to, value, data, accessList]
  *
- * Lo que NO se soporta:
- *   - EIP-2930 (type 1) — raro, lo añadiremos si aparece
- *   - access list contenido — la atravesamos pero no la mostramos
- *   - chainId que no quepa en u64 (raro, todos los chains caben)
- *   - value > 2^256 (estructuralmente imposible si el remitente respeta RLP)
+ * What is NOT supported:
+ *   - EIP-2930 (type 1) — rare, will be added if it shows up
+ *   - access list content — we walk it but don't display it
+ *   - chainId that doesn't fit in u64 (rare, every chain fits)
+ *   - value > 2^256 (structurally impossible if the sender respects RLP)
  *
- * Los buffers `to`, `value_be` se aplanan a 20/32 bytes BE.
- * `data` apunta dentro del buffer RLP original (zero-copy).
+ * Buffers `to`, `value_be` are flattened to 20/32 BE bytes. `data`
+ * points inside the original RLP buffer (zero-copy).
  */
 
 #define ETH_TX_TYPE_LEGACY  0
@@ -31,8 +31,8 @@ typedef struct {
     u64 chainid;
     u64 nonce;
 
-    /* gas pricing: para legacy gas_price = max_fee_per_gas y
-     * max_priority_fee_per_gas = 0 (lo normalizamos así). */
+    /* gas pricing: for legacy gas_price = max_fee_per_gas and
+     * max_priority_fee_per_gas = 0 (we normalise it that way). */
     u64 max_priority_fee_per_gas;
     u64 max_fee_per_gas;
 
@@ -46,28 +46,28 @@ typedef struct {
     const u8* data;
     u32 data_len;
 
-    /* meta para hashing: punteros al buffer original */
+    /* meta for hashing: pointers into the original buffer */
     const u8* raw;
     u32 raw_len;
 } eth_tx;
 
-/* Parsea una transacción serializada. raw puede ser:
+/* Parses a serialised transaction. raw can be:
  *   - [0x02, ...] EIP-1559
- *   - [0x01, ...] EIP-2930 (devuelve 0, no soportado)
- *   - [< 0x80] u otro: legacy (lista RLP directa)
+ *   - [0x01, ...] EIP-2930 (returns 0, not supported)
+ *   - [< 0x80] or other: legacy (plain RLP list)
  *
- * Devuelve 1 ok, 0 si malformed o tipo no soportado. */
+ * Returns 1 on ok, 0 if malformed or an unsupported type. */
 int eth_tx_decode(const u8* raw, u32 raw_len, eth_tx* out);
 
-/* Calcula el hash que se firma (signing hash):
+/* Computes the hash that is signed (signing hash):
  *   - Legacy:    keccak256(rlp([nonce, gasPrice, gasLimit, to, value, data,
  *                               chainId, 0, 0]))
- *                   = keccak256(raw)  porque ya viene RLP-encoded
+ *                   = keccak256(raw)  because it already arrives RLP-encoded
  *   - EIP-1559: keccak256(0x02 || rlp([chainId, nonce, maxPFee, maxFee,
  *                                       gas, to, value, data, accessList]))
- *                   = keccak256(raw)  porque raw ya incluye el 0x02
+ *                   = keccak256(raw)  because raw already includes the 0x02
  *
- * En ambos casos basta keccak256(raw_completo). */
+ * In both cases keccak256(raw_complete) is enough. */
 void eth_tx_signing_hash(const eth_tx* tx, u8 hash[32]);
 
 #endif

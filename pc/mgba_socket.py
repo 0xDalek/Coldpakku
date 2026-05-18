@@ -1,15 +1,15 @@
-"""Cliente del socket TCP que expone mGBA con la opción `-l <addr>:<port>`.
+"""Client for the TCP socket mGBA exposes with the `-l <addr>:<port>` flag.
 
-mGBA expone el link cable como un socket TCP cuando se arranca con esta
-flag. Cada lectura de un byte por el GBA equivale a recibir un byte del
-socket; cada escritura del GBA aparece en el socket. Es decir, el host
-actúa como "el otro GBA" del cable.
+mGBA exposes the link cable as a TCP socket when started with this flag.
+Every byte the GBA reads is a byte received from the socket; every byte
+the GBA writes appears on the socket. In other words, the host plays the
+role of "the other GBA" on the cable.
 
-Uso típico (en otro shell):
+Typical usage (in another shell):
 
     mgba -l 0.0.0.0:12345 gba-signer.gba
 
-Y luego en Python:
+Then in Python:
 
     transport = MgbaSocketTransport("127.0.0.1", 12345)
     sig = perform_signing(transport, tx)
@@ -31,7 +31,7 @@ class MgbaSocketTransport(GbaTransport):
         while len(out) < n:
             chunk = self.sock.recv(n - len(out))
             if not chunk:
-                raise EOFError("socket cerrado por el peer")
+                raise EOFError("socket closed by peer")
             out += chunk
         return bytes(out)
 

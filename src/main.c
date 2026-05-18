@@ -1,7 +1,7 @@
 /*
- * GBA Signer — entry point.
+ * Coldpakku — entry point.
  *
- * Inicializa libgba mínimo y delega en wallet_run() (state.c).
+ * Minimal libgba init and delegates to wallet_run() (state.c).
  */
 #include "state.h"
 
@@ -10,8 +10,8 @@
 #include <gba_video.h>
 
 int main(void) {
-    /* Modo 0 con BG0 para consola; consoleDemoInit ya configura todo
-     * dentro de text_init() vía libgba. */
+    /* Mode 0 with BG0 for the console; consoleDemoInit configures
+     * everything inside text_init() via libgba. */
     wallet_run();
     return 0;
 }

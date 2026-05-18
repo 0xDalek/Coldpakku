@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Reimplementación standalone de `gbafix` (devkitPro/gba-tools).
+"""Standalone reimplementation of `gbafix` (devkitPro/gba-tools).
 
-Parchea una ROM .gba para que pase la verificación del BIOS del Game Boy
-Advance: escribe el logo de Nintendo en 0x04..0xA0, completa el header
-con título / código / fijo 0x96 y calcula el complement check (0xBD).
+Patches a .gba ROM so that it passes the Game Boy Advance BIOS check:
+writes the Nintendo logo at 0x04..0xA0, fills the header with the
+title / code / fixed-0x96 byte, and computes the complement check (0xBD).
 
-Uso:
+Usage:
     python3 tools/gbafix.py gba-signer.gba [-t TITLE] [-c CODE] [-m MAKER]
 
-Sin esto, la ROM se queda en la pantalla del logo de Nintendo al arrancar
-en hardware real (los emuladores como mGBA suelen ignorar el chequeo).
+Without this, the ROM gets stuck on the Nintendo logo screen when booting
+on real hardware (emulators such as mGBA usually skip the check).
 
-Documentación: https://problemkaputt.de/gbatek.htm#gbacartridgeheader
+Reference: https://problemkaputt.de/gbatek.htm#gbacartridgeheader
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ import argparse
 import sys
 from pathlib import Path
 
-# Logo de Nintendo (156 bytes, offsets 0x004-0x09F del header GBA).
-# Es un bitmap comprimido fijo, idéntico en todos los cartuchos.
+# Nintendo logo (156 bytes, offsets 0x004-0x09F of the GBA header).
+# Fixed compressed bitmap, identical on every cartridge.
 NINTENDO_LOGO = bytes.fromhex(
     "24ffae51699aa2213d84820a84e409ad"
     "11248b98c0817f21a352be199309ce20"
@@ -34,15 +34,15 @@ NINTENDO_LOGO = bytes.fromhex(
     "780090cb88113a9465c07c6387f03caf"
     "d625e48b380aac7221d4f807"
 )
-# El array oficial de devkitPro/gba-tools (gbafix.c) tiene exactamente 156 bytes.
-# Si esto falla, la copia de arriba se rompió.
+# The official devkitPro/gba-tools array (gbafix.c) is exactly 156 bytes.
+# If this fires, the copy above got mangled.
 if len(NINTENDO_LOGO) != 156:
-    raise SystemExit(f"Nintendo logo tiene {len(NINTENDO_LOGO)} bytes, deben ser 156")
+    raise SystemExit(f"Nintendo logo is {len(NINTENDO_LOGO)} bytes, must be 156")
 
 
 def patch_header(rom: bytearray, title: str, code: str, maker: str, version: int = 0) -> None:
     if len(rom) < 0xC0:
-        raise SystemExit(f"ROM demasiado pequeña ({len(rom)} bytes), no tiene header GBA")
+        raise SystemExit(f"ROM too small ({len(rom)} bytes), has no GBA header")
 
     # 0x004-0x09F: Nintendo logo (156 bytes)
     rom[0x004:0x0A0] = NINTENDO_LOGO
@@ -90,12 +90,12 @@ def verify_header(rom: bytes) -> bool:
         print("FAIL: Nintendo logo mismatch", file=sys.stderr)
         return False
     if rom[0x0B2] != 0x96:
-        print(f"FAIL: byte 0xB2 = 0x{rom[0x0B2]:02X}, esperado 0x96", file=sys.stderr)
+        print(f"FAIL: byte 0xB2 = 0x{rom[0x0B2]:02X}, expected 0x96", file=sys.stderr)
         return False
     s = sum(rom[0x0A0:0x0BD])
     expected = (-(0x19 + s)) & 0xFF
     if rom[0x0BD] != expected:
-        print(f"FAIL: complement check 0x{rom[0x0BD]:02X}, esperado 0x{expected:02X}", file=sys.stderr)
+        print(f"FAIL: complement check 0x{rom[0x0BD]:02X}, expected 0x{expected:02X}", file=sys.stderr)
         return False
     return True
 

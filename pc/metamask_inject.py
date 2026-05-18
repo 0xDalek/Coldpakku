@@ -1,7 +1,7 @@
-"""Construye una transacción Ethereum, la firma con el GBA (que parsea el
-RLP on-device) y la inyecta en la red vía RPC.
+"""Build an Ethereum transaction, sign it with the GBA (which parses the
+RLP on-device), and inject it onto the network via RPC.
 
-Uso típico (mGBA en localhost):
+Typical usage (mGBA on localhost):
     python3 pc/metamask_inject.py \
         --rpc https://rpc.sepolia.org \
         --transport socket --port 12345 \
@@ -16,10 +16,10 @@ Pico bridge (USB-CDC):
         --to 0x... --value-wei 100000000000000 \
         --address-from 0x...
 
-Diferencia con la versión anterior: ya no calculamos el hash en host y se lo
-mandamos a la GBA para que firme a ciegas. Ahora le mandamos los bytes RLP
-crudos y la GBA decodifica + hashea + muestra los campos parseados antes de
-firmar. El bridge ya no puede mentirle al usuario sobre to/value/data.
+Difference vs. the previous version: we no longer hash on the host and
+ask the GBA to blind-sign. We now send raw RLP bytes and the GBA
+decodes + hashes + shows the parsed fields before signing. The bridge
+can no longer lie to the user about to/value/data.
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def build_unsigned_tx(w3: Web3, sender: str, to: str, value: int,
 
 
 def encode_unsigned_eip1559(tx: dict) -> bytes:
-    """Devuelve el blob que la GBA va a parsear y hashear:
+    """Return the blob the GBA will parse and hash:
     0x02 || rlp([chainId, nonce, maxPFee, maxFee, gas, to, value, data, []])
     """
     fields = [
@@ -98,7 +98,7 @@ def build_transport(args):
     if args.transport == "serial":
         from serial_transport import SerialTransport
         return SerialTransport(args.serial_port, baudrate=args.baud)
-    raise SystemExit(f"transport desconocido: {args.transport}")
+    raise SystemExit(f"unknown transport: {args.transport}")
 
 
 def main() -> int:
@@ -108,15 +108,15 @@ def main() -> int:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=12345)
     p.add_argument("--serial-port", default="/dev/ttyACM0",
-                   help="puerto serie del bridge Pico (default /dev/ttyACM0)")
+                   help="serial port of the Pico bridge (default /dev/ttyACM0)")
     p.add_argument("--baud", type=int, default=115200)
     p.add_argument("--to", required=True)
     p.add_argument("--value-wei", required=True, type=parse_int)
     p.add_argument("--data", default="0x")
     p.add_argument("--address-from", required=True,
-                   help="address esperada del firmante (la mostrada por el GBA)")
+                   help="expected signer address (the one shown by the GBA)")
     p.add_argument("--no-broadcast", action="store_true",
-                   help="firma pero no envía la tx; útil para auditoría")
+                   help="sign but do not send the tx; useful for auditing")
     args = p.parse_args()
 
     w3 = Web3(Web3.HTTPProvider(args.rpc))
@@ -135,38 +135,38 @@ def main() -> int:
 
     payload = RlpTx(rlp=blob)
 
-    print(f"[inject] conectando vía {args.transport}...")
+    print(f"[inject] connecting via {args.transport}...")
     transport = build_transport(args)
-    print(f"[inject] esperando READY, confirma la tx en el GBA...")
+    print(f"[inject] waiting for READY, confirm the tx on the GBA...")
     sig = perform_signing(transport, payload)
     if sig is None:
-        print("[inject] usuario CANCELO en el GBA")
+        print("[inject] user CANCELLED on the GBA")
         return 2
 
-    print(f"[inject] firma cruda: {sig.hex()}")
+    print(f"[inject] raw signature: {sig.hex()}")
     expected_addr = to_canonical_address(args.address_from)
     rec = recover_address(h, sig, expected_addr)
     if rec is None:
-        print("[inject] ERROR: no se recupera la address esperada — firma invalida")
+        print("[inject] ERROR: could not recover the expected address — invalid signature")
         return 3
     canonical, recid = rec
-    print(f"[inject] firma canonical (v=27+{recid}): {canonical.hex()}")
+    print(f"[inject] canonical signature (v=27+{recid}): {canonical.hex()}")
 
     raw = assemble_signed_rlp(tx, canonical)
-    print(f"[inject] tx serializada: 0x{raw.hex()[:80]}... ({len(raw)} bytes)")
+    print(f"[inject] serialized tx: 0x{raw.hex()[:80]}... ({len(raw)} bytes)")
 
-    # Hash deterministico de la tx firmada (lo que veras en etherscan).
-    # Lo computamos siempre, incluso en --no-broadcast, para que el GBA
-    # pueda mostrar el hash en su pantalla TX RESULT.
+    # Deterministic hash of the signed tx (what you will see on etherscan).
+    # We compute it always, even on --no-broadcast, so the GBA can show
+    # the hash on its TX RESULT screen.
     final_txhash = keccak(raw)
 
     if args.no_broadcast:
-        print(f"[inject] --no-broadcast: deteniendose antes de enviar")
-        print(f"[inject] hash que tendria si se enviara: 0x{final_txhash.hex()}")
+        print(f"[inject] --no-broadcast: stopping before sending")
+        print(f"[inject] hash it would have if sent: 0x{final_txhash.hex()}")
         try:
             send_tx_result(transport, TXRESULT_NO_BROADCAST, txhash=final_txhash)
         except Exception as e:
-            print(f"[inject] (no se pudo notificar al GBA: {e})")
+            print(f"[inject] (could not notify the GBA: {e})")
         return 0
 
     try:
@@ -175,26 +175,26 @@ def main() -> int:
             txhash[2:] if isinstance(txhash, str) and txhash.startswith("0x") else txhash
         )
         txhash_hex = "0x" + txhash_bytes.hex()
-        print(f"[inject] enviada, txhash = {txhash_hex}")
-        print(f"[inject] explorador: https://sepolia.etherscan.io/tx/{txhash_hex}")
+        print(f"[inject] sent, txhash = {txhash_hex}")
+        print(f"[inject] explorer: https://sepolia.etherscan.io/tx/{txhash_hex}")
         try:
             send_tx_result(transport, TXRESULT_BROADCAST_OK, txhash=bytes(txhash_bytes))
         except Exception as e:
-            print(f"[inject] (no se pudo notificar al GBA: {e})")
+            print(f"[inject] (could not notify the GBA: {e})")
         return 0
     except Exception as e:
-        # cualquier error del RPC (reverted, underpriced, intrinsic gas,
-        # nonce too low, etc) lo propagamos al GBA para que el usuario lo
-        # vea en pantalla. El mensaje se trunca a 64 bytes en el firmware.
+        # any RPC error (reverted, underpriced, intrinsic gas, nonce too
+        # low, etc) is propagated to the GBA so the user sees it on
+        # screen. The firmware truncates the message at 64 bytes.
         msg = str(e)
-        # web3 mete el error completo con stacktrace; nos quedamos con la
-        # primera linea relevante.
+        # web3 includes the full error with stacktrace; we keep only the
+        # first relevant line.
         short = msg.split("\n")[0][:200]
         print(f"[inject] ERROR broadcast: {short}")
         try:
             send_tx_result(transport, TXRESULT_BROADCAST_ERR, errmsg=short)
         except Exception as e2:
-            print(f"[inject] (no se pudo notificar al GBA: {e2})")
+            print(f"[inject] (could not notify the GBA: {e2})")
         return 4
 
 

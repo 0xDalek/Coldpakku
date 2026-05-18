@@ -1,5 +1,5 @@
-@ Marcador para que mGBA / flashcarts detecten que la ROM usa SRAM 32 KB.
-@ La cadena debe aparecer en algún sitio del binario; .ascii la deja en .rodata.
+@ Marker so mGBA / flashcarts detect that the ROM uses 32 KB SRAM.
+@ The string must appear somewhere in the binary; .ascii puts it in .rodata.
 
     .section .rodata
     .align 2

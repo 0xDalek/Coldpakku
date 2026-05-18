@@ -11,15 +11,27 @@ static u32 last_filled = 0xFFFFFFFFu;
 static u32 spinner_phase = 0;
 static u32 spinner_frame = 0;
 
-void progress_begin(const char* title) {
+/* General variant: the caller decides the screen title and the
+ * statusbar subtitle. Use this for SIGN, BIP32, etc. */
+void progress_begin_full(const char* screen_title,
+                         const char* status_subtitle,
+                         const char* line1,
+                         const char* line2,
+                         const char* line3) {
     text_clear();
-    text_titlebar("DERIVATION", "BUSY");
-    text_at(2, 4, title);
+    text_titlebar(screen_title ? screen_title : "PROCESSING", "BUSY");
+    if (line1) text_at(2, 4, line1);
+    if (line2) text_at(2, 5, line2);
     text_at(2, 8, "[                        ]");
     text_at(2, 11, "0 / 0          ");
-    text_at(2, 13, "  please wait...");
-    text_statusbar("computing PBKDF2-HMAC-SHA512");
+    if (line3) text_at(2, 13, line3);
+    text_statusbar(status_subtitle ? status_subtitle : "working...");
     last_filled = 0xFFFFFFFFu;
+}
+
+void progress_begin(const char* title) {
+    progress_begin_full("DERIVATION", "computing PBKDF2-HMAC-SHA512",
+                        title, NULL, "  please wait...");
 }
 
 void progress_set(u32 done, u32 total) {
@@ -32,7 +44,7 @@ void progress_set(u32 done, u32 total) {
         text_at(3, 8, bar);
         last_filled = filled;
     }
-    /* contador y spinner siempre */
+    /* counter and spinner always */
     char buf[24];
     snprintf(buf, sizeof(buf), "%lu / %lu     ", (unsigned long)done, (unsigned long)total);
     text_at(2, 11, buf);

@@ -1,16 +1,16 @@
 /*
- * BIP32 derivación HD para secp256k1.
+ * BIP32 HD derivation over secp256k1.
  *
  * Hardened (i >= 2^31): I = HMAC-SHA512(chain, 0x00 || ser256(priv) || ser32(i))
  * Non-hardened:         I = HMAC-SHA512(chain, ser_p(K_par) || ser32(i))
- *   donde ser_p(K_par) es el pubkey comprimido (33 bytes, prefijo 02/03).
+ *   where ser_p(K_par) is the compressed pubkey (33 bytes, 02/03 prefix).
  *
  * priv_child = (IL + priv_parent) mod n
  * chain_child = IR
  *
- * Necesitamos suma modular en n del orden de secp256k1. micro-ecc no
- * expone esa primitiva públicamente, así que la implementamos con BIGINT
- * 256-bit propio (suma + resta condicional).
+ * We need modular addition modulo n (the order of secp256k1). micro-ecc
+ * does not expose that primitive publicly, so we implement it with our
+ * own 256-bit BIGINT (addition + conditional subtraction).
  */
 #include "bip32.h"
 #include "hmac_sha512.h"
@@ -19,7 +19,7 @@
 
 #include <string.h>
 
-/* n de secp256k1 (orden del grupo) en big-endian */
+/* n of secp256k1 (group order) in big-endian */
 static const u8 SECP256K1_N[32] = {
     0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,
     0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFE,
@@ -40,7 +40,7 @@ static int be_is_zero(const u8 a[32]) {
     return 1;
 }
 
-/* a += b (mod 2^256). Devuelve carry. */
+/* a += b (mod 2^256). Returns the carry. */
 static u32 be_add(u8 a[32], const u8 b[32]) {
     u32 c = 0;
     for (int i = 31; i >= 0; i--) {
@@ -51,7 +51,7 @@ static u32 be_add(u8 a[32], const u8 b[32]) {
     return c;
 }
 
-/* a -= b. Devuelve borrow. */
+/* a -= b. Returns the borrow. */
 static u32 be_sub(u8 a[32], const u8 b[32]) {
     u32 br = 0;
     for (int i = 31; i >= 0; i--) {
@@ -65,7 +65,7 @@ static u32 be_sub(u8 a[32], const u8 b[32]) {
 /* (a + b) mod n */
 static void be_add_mod_n(u8 a[32], const u8 b[32]) {
     u32 c = be_add(a, b);
-    /* si hay carry o el resultado >= n, restar n */
+    /* if there's a carry or the result is >= n, subtract n */
     if (c || be_ge(a, SECP256K1_N)) {
         be_sub(a, SECP256K1_N);
     }
@@ -90,7 +90,7 @@ int bip32_ckd(const bip32_node* in, u32 index, bip32_node* out) {
     } else {
         u8 pub64[64];
         if (!uECC_compute_public_key(in->priv, pub64, uECC_secp256k1())) return 0;
-        /* compress: 0x02 si y par, 0x03 si y impar; x = pub64[0..32] */
+        /* compress: 0x02 if y is even, 0x03 if odd; x = pub64[0..32] */
         data[0] = (pub64[63] & 1) ? 0x03 : 0x02;
         memcpy(data + 1, pub64, 32);
     }
@@ -101,7 +101,8 @@ int bip32_ckd(const bip32_node* in, u32 index, bip32_node* out) {
 
     hmac_sha512(in->chain, 32, data, 37, I);
 
-    /* Validar: IL < n y child priv != 0; si no, retry con next index (raro, ignoramos por simplicidad). */
+    /* Validate: IL < n and child priv != 0; otherwise retry with the next
+     * index (rare, ignored for simplicity). */
     if (!be_ge(SECP256K1_N, I) || be_is_zero(I)) {
         memset(I, 0, 64);
         return 0;
@@ -128,13 +129,26 @@ int bip32_ckd(const bip32_node* in, u32 index, bip32_node* out) {
 }
 
 int bip32_derive_eth_default(const bip32_node* master, bip32_node* out) {
+    return bip32_derive_eth_default_progress(master, out, NULL, NULL);
+}
+
+int bip32_derive_eth_default_progress(const bip32_node* master,
+                                      bip32_node* out,
+                                      bip32_progress_fn cb,
+                                      void* ud) {
     /* m / 44' / 60' / 0' / 0 / 0 */
     bip32_node a, b;
+    if (cb) cb(0, 5, ud);
     if (!bip32_ckd(master, BIP32_HARDENED + 44, &a)) return 0;
+    if (cb) cb(1, 5, ud);
     if (!bip32_ckd(&a, BIP32_HARDENED + 60, &b)) return 0;
+    if (cb) cb(2, 5, ud);
     if (!bip32_ckd(&b, BIP32_HARDENED + 0,  &a)) return 0;
+    if (cb) cb(3, 5, ud);
     if (!bip32_ckd(&a, 0, &b)) return 0;
+    if (cb) cb(4, 5, ud);
     if (!bip32_ckd(&b, 0, out)) return 0;
+    if (cb) cb(5, 5, ud);
     memset(&a, 0, sizeof(a));
     memset(&b, 0, sizeof(b));
     return 1;

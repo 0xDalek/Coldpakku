@@ -1,13 +1,13 @@
-"""Test E2E sobre socket mGBA: envía una tx EIP-1559 RLP-codificada,
-recibe firma, valida.
+"""E2E test over the mGBA socket: send an RLP-encoded EIP-1559 tx,
+receive the signature, validate it.
 
-Pre-requisitos:
+Prerequisites:
   pip install -r requirements.txt
-  mgba -l 0.0.0.0:12345 gba-signer.gba   (lanzar en otra terminal)
-  En el GBA: completar la entrada del mnemónico (o cargar sesión) hasta READY
+  mgba -l 0.0.0.0:12345 gba-signer.gba   (run in another terminal)
+  On the GBA: finish mnemonic entry (or load a session) up to READY
 
-Ejecutar:
-  python3 pc/test_e2e.py 0xADDRESS_ESPERADA
+Run:
+  python3 pc/test_e2e.py 0xEXPECTED_ADDRESS
 """
 from __future__ import annotations
 
@@ -45,22 +45,22 @@ def main(expected_addr_hex: str, port: int = 12345) -> int:
 
     tx = RlpTx(rlp=blob)
 
-    print(f"conectando a 127.0.0.1:{port}...")
+    print(f"connecting to 127.0.0.1:{port}...")
     t = MgbaSocketTransport(port=port)
-    print(f"esperando READY del GBA...")
+    print(f"waiting for READY from the GBA...")
     sig = perform_signing(t, tx)
     if sig is None:
-        print("usuario CANCELO en el GBA")
+        print("user CANCELLED on the GBA")
         return 2
 
-    print(f"firma recibida: {sig.hex()}")
+    print(f"signature received: {sig.hex()}")
     rec = recover_address(h, sig, expected_addr)
     if rec is None:
-        print(f"ERROR: no se pudo recuperar la address esperada {to_checksum_address(expected_addr)}")
+        print(f"ERROR: could not recover the expected address {to_checksum_address(expected_addr)}")
         return 3
     canonical, recid = rec
-    print(f"OK: recid={recid}, sig canonical = {canonical.hex()}")
-    print(f"address recuperada = {to_checksum_address(expected_addr)}")
+    print(f"OK: recid={recid}, canonical sig = {canonical.hex()}")
+    print(f"recovered address = {to_checksum_address(expected_addr)}")
     return 0
 
 

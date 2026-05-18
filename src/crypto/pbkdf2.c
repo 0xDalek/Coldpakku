@@ -1,11 +1,11 @@
 /*
- * PBKDF2-HMAC-SHA512 con un único bloque (dklen=64).
+ * PBKDF2-HMAC-SHA512 with a single block (dklen=64).
  *
- * Optimización: cuando computamos U_2..U_c lo que cambia respecto al U_1
- * es solo el mensaje. Pero como en cada iteración el mensaje es 64 bytes,
- * podemos pre-cachar los estados ipad/opad del HMAC y reusarlos: cada
- * iteración cuesta 2 compresiones SHA-512 (1 inner + 1 outer) en lugar
- * de 4 si se reinicializase HMAC desde la clave.
+ * Optimisation: when we compute U_2..U_c what changes compared to U_1
+ * is only the message. But since each iteration's message is 64 bytes,
+ * we can pre-cache the HMAC ipad/opad states and reuse them: each
+ * iteration costs 2 SHA-512 compressions (1 inner + 1 outer) instead
+ * of 4 if HMAC were reinitialised from the key.
  */
 #include "pbkdf2.h"
 #include "sha512.h"
@@ -29,7 +29,7 @@ void pbkdf2_hmac_sha512_64(const u8* password, u32 plen,
     hmac_sha512_init(&base, password, plen);
 
     /* U_1 */
-    hmac_sha512_ctx h1 = base;  /* copia estructural; init() ya hizo los ipad/opad */
+    hmac_sha512_ctx h1 = base;  /* structural copy; init() already prepared ipad/opad */
     u8 idx_be[4] = {0, 0, 0, 1};
     hmac_sha512_update(&h1, salt, slen);
     hmac_sha512_update(&h1, idx_be, 4);

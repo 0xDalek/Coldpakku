@@ -3,8 +3,8 @@
 
 #include "../types.h"
 
-/* Keccak-256 (NO SHA3-256). La diferencia es el byte de padding (0x01 vs 0x06).
- * Es la función hash usada por Ethereum.
+/* Keccak-256 (NOT SHA3-256). They differ in the padding byte (0x01 vs 0x06).
+ * This is the hash function used by Ethereum.
  *
  *   keccak256(in, len) -> 32 bytes
  */

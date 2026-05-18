@@ -1,20 +1,20 @@
-"""Transport sobre /dev/ttyS0 (UART hardware) — usado en Raspberry Pi.
+"""Transport over /dev/ttyS0 (hardware UART) — used on the Raspberry Pi.
 
-Cableado GBA link cable ↔ Pi GPIO:
-    GBA SO  → Pi GPIO15 (RXD0, pin 10)
-    GBA SI  ← Pi GPIO14 (TXD0, pin 8)
-    GBA SC  ← (no usado en modo UART asíncrono)
-    GBA SD  → (idem)
-    GBA GND ↔ Pi GND (pin 6, 9, etc.)
+GBA link cable <-> Pi GPIO wiring:
+    GBA SO  -> Pi GPIO15 (RXD0, pin 10)
+    GBA SI  <- Pi GPIO14 (TXD0, pin 8)
+    GBA SC  <- (unused in async UART mode)
+    GBA SD  -> (ditto)
+    GBA GND <-> Pi GND (pin 6, 9, etc.)
 
-NO conectar Vcc del cable a la Pi: el GBA se alimenta de su propia
-batería. Si compartes GND y nada más, los niveles 3.3V LVTTL del GBA son
-compatibles directamente con los pines GPIO 3.3V de la Pi (no hace falta
-level shifter para Pi 1/2/3/4/5).
+Do NOT connect the cable's Vcc to the Pi: the GBA is powered by its own
+battery. If you only share GND, the GBA's 3.3V LVTTL levels are directly
+compatible with the Pi's 3.3V GPIO pins (no level shifter needed for
+Pi 1/2/3/4/5).
 
-Habilitar UART en la Pi:
-    sudo raspi-config → Interface → Serial → no consola login, sí HW
-    (o en /boot/config.txt: enable_uart=1, dtoverlay=disable-bt en Pi3+)
+Enabling UART on the Pi:
+    sudo raspi-config -> Interface -> Serial -> no login console, yes HW
+    (or in /boot/config.txt: enable_uart=1, dtoverlay=disable-bt on Pi3+)
 """
 from __future__ import annotations
 
@@ -26,30 +26,30 @@ from protocol import GbaTransport
 
 
 class SerialTransport(GbaTransport):
-    """Transporte sobre /dev/ttyACM0 (Pico USB-CDC bridge → UART al GBA).
+    """Transport over /dev/ttyACM0 (Pico USB-CDC bridge -> UART to the GBA).
 
-    Historia:
-      v1: el SIO del GBA en modo UART tiene un FIFO RX de SOLO 4 bytes y
-          `uart_recv_byte_timeout` original solo lo drenaba una vez por
-          VBlank (~16 ms = 60 B/s). Con bursts a 115200 baud el FIFO
-          desbordaba y perdíamos bytes silenciosamente.
-      v2: el firmware del GBA ahora usa busy-spin en `uart_recv_byte_busy`
-          dentro de `protocol_recv_tx_rlp`, drenando el FIFO al ritmo del
-          CPU (~MB/s). Ya no necesitamos throttle agresivo del host.
+    History:
+      v1: the GBA's SIO in UART mode has a 4-byte RX FIFO and the
+          original `uart_recv_byte_timeout` only drained it once per
+          VBlank (~16 ms = 60 B/s). With bursts at 115200 baud the FIFO
+          overflowed and we silently lost bytes.
+      v2: the GBA firmware now busy-spins in `uart_recv_byte_busy`
+          inside `protocol_recv_tx_rlp`, draining the FIFO at CPU rate
+          (~MB/s). We no longer need aggressive host throttling.
 
-    Mantengo un throttle MUY ligero (32 B / 0.5 ms = ~60 KB/s) por dos
-    motivos defensivos:
-      - el bridge MicroPython en el Pico hace polling y un burst gigante
-        podria saturar el buffer del UART TX del Pico (512 B).
-      - le da al GBA tiempo entre chunks para procesar interrupts (por
-        ejemplo si quisieramos meter VBlank cooperativo en el futuro).
-    Si el firmware del GBA mejora aun mas, se puede subir/quitar."""
+    We keep a VERY light throttle (32 B / 0.5 ms = ~60 KB/s) for two
+    defensive reasons:
+      - the MicroPython bridge on the Pico polls and a giant burst could
+        saturate the Pico's UART TX buffer (512 B).
+      - it gives the GBA time between chunks to handle interrupts (for
+        example if we ever add cooperative VBlank handling).
+    If the GBA firmware improves further this can be raised/removed."""
 
-    # El Pico USB-CDC se resetea cuando se abre el puerto si DTR/RTS hace
-    # toggle (comportamiento por defecto de pyserial en algunos drivers de
-    # Linux). Tras el reset el bridge MicroPython tarda ~2.5s en arrancar
-    # (rescue window 2s + boot). Si empezamos a leer antes, perdemos los
-    # READYs del GBA y todo desincroniza. Por eso esperamos al inicio.
+    # The Pico USB-CDC resets when the port is opened if DTR/RTS toggles
+    # (default pyserial behaviour on some Linux drivers). After the
+    # reset the MicroPython bridge needs ~2.5s to boot (2s rescue
+    # window + boot). If we start reading earlier we miss the GBA's
+    # READYs and everything desyncs. Hence the initial wait.
     BOOT_SETTLE_S = 3.0
 
     def __init__(self, device: str = "/dev/ttyACM0", baudrate: int = 115200,
@@ -61,9 +61,9 @@ class SerialTransport(GbaTransport):
         self.ser.bytesize = 8
         self.ser.parity = serial.PARITY_NONE
         self.ser.stopbits = 1
-        # dtr/rts a False *antes* de open() reduce el toggle de algunos
-        # drivers, pero no lo elimina completo. Por eso ademas hay
-        # boot_settle_s.
+        # Setting dtr/rts to False *before* open() reduces the toggle on
+        # some drivers but does not eliminate it fully. That's why we
+        # also have boot_settle_s.
         self.ser.dtr = False
         self.ser.rts = False
         self.ser.timeout = 30.0
@@ -72,20 +72,20 @@ class SerialTransport(GbaTransport):
         self.chunk_size = chunk_size
         self.chunk_delay_s = chunk_delay_s
 
-        # Espera a que el Pico termine de arrancar tras el (posible) reset
-        # del open(). Durante este tiempo los bytes que el bridge propaga
-        # son los primeros READY del GBA tras estar conectado de nuevo.
+        # Wait for the Pico to finish booting after the (possible) reset
+        # from open(). During this window the bytes the bridge forwards
+        # are the GBA's first READY after being reconnected.
         settle = boot_settle_s if boot_settle_s is not None else self.BOOT_SETTLE_S
         if settle > 0:
             time.sleep(settle)
 
-        # Drena cualquier byte residual (READY pulses acumulados durante el
-        # boot del Pico, restos de sesiones previas, etc.). El siguiente
-        # read() tendra un READY "fresco".
+        # Drain any leftover bytes (READY pulses accumulated during the
+        # Pico boot, leftovers from previous sessions, etc.). The next
+        # read() will see a "fresh" READY.
         self._drain()
 
     def _drain(self, settle_s: float = 0.2) -> None:
-        """Lee bytes hasta que no llegue nada en `settle_s` segundos."""
+        """Read bytes until nothing arrives for `settle_s` seconds."""
         old_to = self.ser.timeout
         try:
             self.ser.timeout = settle_s
@@ -105,11 +105,11 @@ class SerialTransport(GbaTransport):
             if chunk:
                 out += chunk
             elif time.monotonic() > deadline:
-                raise TimeoutError(f"esperando {n} bytes, recibí {len(out)}")
+                raise TimeoutError(f"waiting for {n} bytes, received {len(out)}")
         return bytes(out)
 
     def write(self, data: bytes) -> None:
-        # Trocea para no desbordar el FIFO RX del GBA (4 bytes).
+        # Chunk it up so we don't overflow the GBA's RX FIFO (4 bytes).
         for i in range(0, len(data), self.chunk_size):
             self.ser.write(data[i:i + self.chunk_size])
             self.ser.flush()

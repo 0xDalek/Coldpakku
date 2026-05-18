@@ -1,7 +1,7 @@
 /*
- * SHA-512 (FIPS 180-4) — implementación compacta para ARM7TDMI.
- * Sin dependencias de libc excepto memcpy. Utiliza emulación 64-bit
- * vía __aeabi_* que aporta gcc.
+ * SHA-512 (FIPS 180-4) — compact implementation for ARM7TDMI.
+ * No libc dependencies besides memcpy. Uses 64-bit emulation via
+ * __aeabi_* helpers provided by gcc.
  */
 #include "sha512.h"
 

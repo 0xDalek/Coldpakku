@@ -19,7 +19,7 @@ int bip39_word_index(const char* word) {
 u32 bip39_filter_prefix(const char* prefix, u32 max_out, u16* out_idx) {
     u32 plen = strlen(prefix);
     if (plen == 0) return 0;
-    /* binary search del primer match */
+    /* binary search for the first match */
     int lo = 0, hi = BIP39_WORDLIST_LEN;
     while (lo < hi) {
         int mid = (lo + hi) >> 1;
@@ -38,9 +38,9 @@ u32 bip39_filter_prefix(const char* prefix, u32 max_out, u16* out_idx) {
 int bip39_has_prefix(const char* prefix) {
     u32 plen = strlen(prefix);
     if (plen == 0) return 1;
-    /* misma binary search; sin recorrido lineal posterior, asi es O(log N)
-     * total y no O(log N + matches). Critico para el keyboard que llama
-     * esto hasta 26 veces por pulsacion de UP/DOWN. */
+    /* same binary search; no subsequent linear walk, so it's O(log N)
+     * total and not O(log N + matches). Critical because the keyboard
+     * calls this up to 26 times per UP/DOWN press. */
     int lo = 0, hi = BIP39_WORDLIST_LEN;
     while (lo < hi) {
         int mid = (lo + hi) >> 1;
@@ -52,10 +52,10 @@ int bip39_has_prefix(const char* prefix) {
 }
 
 int bip39_validate_words(const u16 word_idx[BIP39_WORDS_COUNT]) {
-    /* 12 palabras = 132 bits = 16.5 bytes
-       Empaquetamos los 132 bits en un buffer de 17 bytes (último byte tiene
-       solo 4 bits útiles en MSB). Entropy = primeros 16 bytes. Checksum =
-       SHA256(entropy)[0] >> 4 == último nibble del bit 132. */
+    /* 12 words = 132 bits = 16.5 bytes.
+       We pack the 132 bits into a 17-byte buffer (the last byte has
+       only 4 useful bits in its MSB). Entropy = first 16 bytes.
+       Checksum = SHA256(entropy)[0] >> 4 == last nibble of bit 132. */
     u8 buf[17] = {0};
     int bit = 0;
     for (int i = 0; i < BIP39_WORDS_COUNT; i++) {
@@ -93,8 +93,9 @@ void bip39_mnemonic_to_seed(const char* mnemonic, u32 mlen,
                             const char* passphrase, u32 plen,
                             u8 seed[64],
                             pbkdf2_progress_fn progress, void* ud) {
-    /* salt = "mnemonic" + passphrase, codificado UTF-8 NFKD.
-       Asumimos passphrase ASCII; si es vacío plen=0 y no se concatena. */
+    /* salt = "mnemonic" + passphrase, encoded UTF-8 NFKD.
+       We assume an ASCII passphrase; if empty, plen=0 and we don't
+       concatenate anything. */
     u8 salt[8 + 256];
     static const char prefix[8] = {'m','n','e','m','o','n','i','c'};
     memcpy(salt, prefix, 8);

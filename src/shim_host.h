@@ -1,8 +1,8 @@
 /*
- * Shim para compilar los módulos crypto en el host (gcc nativo) sin libgba.
- * Sustituye <gba_types.h> con typedefs de stdint.
+ * Shim for building the crypto modules on the host (native gcc) without
+ * libgba. Replaces <gba_types.h> with stdint typedefs.
  *
- * Solo se usa cuando compilamos como librería compartida en tests/host_test.py.
+ * Used only when building as a shared library for tests/host_test.py.
  */
 #ifndef GBA_SIGNER_SHIM_HOST_H
 #define GBA_SIGNER_SHIM_HOST_H
@@ -18,6 +18,6 @@ typedef int16_t  s16;
 typedef int32_t  s32;
 typedef int64_t  s64;
 
-#define _gba_types_h_ 1   /* impide que se incluya el real */
+#define _gba_types_h_ 1   /* prevents the real header from being pulled in */
 
 #endif

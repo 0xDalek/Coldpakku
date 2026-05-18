@@ -6,7 +6,7 @@ build/
 *.sav
 *.bak
 
-# entornos locales (devkitpro / python tooling)
+# local toolchain envs (devkitpro / python tooling)
 .devkitpro/
 .venv-tools/
 .venv/
@@ -15,12 +15,21 @@ build/
 __pycache__/
 *.pyc
 
-# vectores BIP-39 con mnemonic literal
+# BIP-39 test vectors with literal mnemonic
 tests/
 
-# herramientas locales / IDE / agentes
+# local tooling / IDE / agents
 .cursor/
 mcps/
+
+# extension build output + node_modules
+extension/node_modules/
+extension/dist/
+
+# release artifacts produced by scripts/build_release.sh
+releases/*.gba
+releases/*.zip
+releases/RELEASE_NOTES_v*.md
 
 # editor
 *.swp

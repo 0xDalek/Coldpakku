@@ -4,9 +4,9 @@
 #include <gba_types.h>
 #include "../crypto/bip39.h"
 
-/* Pide al usuario las 12 palabras BIP39 con teclado en pantalla y filtro
- * por prefijo. Bloquea hasta completar. Devuelve 1 si las 12 palabras
- * superan checksum BIP39, 0 si el usuario cancela. */
+/* Asks the user for the 12 BIP-39 words via an on-screen keyboard with
+ * a prefix filter. Blocks until completion. Returns 1 if the 12 words
+ * pass the BIP-39 checksum, 0 if the user cancels. */
 int keyboard_input_words(u16 out_idx[BIP39_WORDS_COUNT]);
 
 #endif

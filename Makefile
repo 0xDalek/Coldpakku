@@ -1,12 +1,12 @@
 #---------------------------------------------------------------------------------
-# GBA Signer — hardware wallet Ethereum sobre Game Boy Advance
+# GBA Signer — Ethereum hardware wallet for the Game Boy Advance
 #
-# Basado en la plantilla devkitARM + libgba. Requiere:
-#   - DEVKITARM y DEVKITPRO en entorno (paquete pacman gba-dev)
-#   - mGBA para emulación
+# Based on the devkitARM + libgba template. Requires:
+#   - DEVKITARM and DEVKITPRO in the environment (pacman package gba-dev)
+#   - mGBA for emulation
 #---------------------------------------------------------------------------------
 ifeq ($(strip $(DEVKITARM)),)
-$(error "DEVKITARM no definido. Instala devkitPro / paquete gba-dev y exporta DEVKITARM")
+$(error "DEVKITARM not set. Install devkitPro / package gba-dev and export DEVKITARM")
 endif
 
 include $(DEVKITARM)/gba_rules
@@ -63,7 +63,7 @@ LIBS    := -lgba
 LIBDIRS := $(LIBGBA)
 
 #---------------------------------------------------------------------------------
-# Build rules — copia adaptada del template libgba
+# Build rules — adapted from the libgba template
 #---------------------------------------------------------------------------------
 ifneq ($(BUILD),$(notdir $(CURDIR)))
 
@@ -90,26 +90,30 @@ export INCLUDE := $(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 
 export LIBPATHS := $(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-.PHONY: $(BUILD) clean run socket wordlist
+.PHONY: $(BUILD) clean run socket wordlist splash
 
 $(BUILD):
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
 clean:
-	@echo "limpiando..."
+	@echo "cleaning..."
 	@rm -rf $(BUILD) $(TARGET).elf $(TARGET).gba
 
 run: $(BUILD)
 	@mgba-qt $(TARGET).gba &
 
 socket: $(BUILD)
-	@echo "lanzando mGBA con socket TCP en :12345..."
+	@echo "launching mGBA with TCP socket on :12345..."
 	@mgba -l 0.0.0.0:12345 $(TARGET).gba &
 
 wordlist:
 	@python3 tools/gen_wordlist.py third_party/bip39-wordlist.txt src/bip39_wordlist.h
-	@echo "wordlist regenerada"
+	@echo "wordlist regenerated"
+
+splash:
+	@python3 tools/png_to_mode4.py assets/splash_coldpakku.png src/ui/splash_image.h --name SPLASH
+	@echo "splash_image.h regenerated"
 
 else
 

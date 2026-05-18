@@ -12,7 +12,7 @@ void hmac_sha256(const u8* key, u32 keylen,
     u8 k[HMAC_SHA256_BLOCK];
     SHA256_CTX s;
 
-    /* 1. Normaliza key a tamaño bloque */
+    /* 1. Normalise the key to block size */
     if (keylen > HMAC_SHA256_BLOCK) {
         sha256_init(&s);
         sha256_update(&s, (const BYTE*)key, keylen);
@@ -42,7 +42,7 @@ void hmac_sha256(const u8* key, u32 keylen,
     sha256_update(&s, inner, HMAC_SHA256_OUT);
     sha256_final(&s, out);
 
-    /* zeroize material temporal */
+    /* zeroise temporary material */
     memset(k, 0, sizeof(k));
     memset(ipad, 0, sizeof(ipad));
     memset(opad, 0, sizeof(opad));
