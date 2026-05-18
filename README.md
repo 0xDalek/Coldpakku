@@ -520,6 +520,22 @@ Pending:
 - **Package the extension for the Chrome Web Store** — review + dev
   account.
 
+## Donations
+
+Coldpakku is built and maintained in spare time. If it is useful to
+you, donations are appreciated and help fund hardware testing on
+mainnet (gas alone adds up quickly).
+
+Ethereum / EVM-compatible address — works on Ethereum mainnet,
+Polygon, Base, Arbitrum, Optimism, zkSync Era, Linea, Scroll, Blast,
+Mantle, Gnosis, BSC, Avalanche, and any other EVM chain:
+
+    0x3E0B74331f0D26745966A4e2695122fa6Dc5C65b
+
+You can also use the **Sponsor** button at the top of the repository
+page (links to the same address on Etherscan so you can verify it
+before sending).
+
 ## References
 
 - BIP39: https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki

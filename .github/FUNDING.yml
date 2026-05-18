@@ -1,0 +1,12 @@
+# GitHub Sponsor button.
+#
+# Coldpakku does not yet have a GitHub Sponsors / Open Collective /
+# Patreon account. The "custom" link points to the project's donation
+# address on Etherscan so sponsors can verify the address, see balance
+# and history, and donate directly.
+#
+# The address is a normal EVM address: it works on Ethereum mainnet,
+# Polygon, Base, Arbitrum, Optimism, and any other chain that uses
+# Ethereum-style addresses.
+
+custom: ["https://etherscan.io/address/0x3E0B74331f0D26745966A4e2695122fa6Dc5C65b"]
