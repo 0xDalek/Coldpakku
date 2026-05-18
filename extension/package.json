@@ -1,0 +1,24 @@
+{
+  "name": "gba-signer-extension",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Browser extension that turns a Game Boy Advance into an Ethereum hardware wallet via WebSerial.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "release": "vite build && cd dist && zip -r ../../releases/gba-signer-extension-v0.1.0.zip ."
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.36",
+    "@types/chrome": "^0.0.270",
+    "@types/node": "^25.6.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.6.0",
+    "@noble/hashes": "^1.5.0"
+  }
+}

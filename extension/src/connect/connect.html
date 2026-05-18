@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Coldpakku - Connect</title>
+    <link rel="stylesheet" href="connect.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="logo">[GBA]</div>
+        <h1>Coldpakku</h1>
+        <p class="sub">Connect the Pico's USB port</p>
+      </header>
+
+      <section id="step-pick">
+        <ol>
+          <li>Make sure the Game Boy is on the <code>AWAITING TRANSACTION</code> screen.</li>
+          <li>The Raspberry Pi Pico must be plugged into the PC via USB.</li>
+          <li>Press <strong>Pick port</strong> and select the Pico's COM
+            (usually shows up as <em>USB Serial Device</em> or <em>Pi Pico</em>).</li>
+        </ol>
+        <button id="btn-pick" class="primary">Pick port</button>
+        <p id="hint" class="muted">
+          If the dialog is empty: check Windows Device Manager that the Pico
+          appears as a COM port. If it doesn't appear, install the Raspberry
+          Pi driver (it's usually automatic — try re-plugging).
+        </p>
+      </section>
+
+      <section id="step-busy" hidden>
+        <p>Connecting to the Game Boy...</p>
+        <div class="spinner"></div>
+        <p class="muted">If the GBA is slow, check that the link cable is
+          plugged in and the screen reads <code>AWAITING TRANSACTION</code>.</p>
+      </section>
+
+      <section id="step-ok" hidden>
+        <p class="ok">Connected.</p>
+        <p>Address: <span id="addr" class="mono"></span></p>
+        <p class="muted">You can close this tab and use dApps normally.</p>
+        <button id="btn-close" class="primary">Close</button>
+      </section>
+
+      <section id="step-error" hidden>
+        <p class="error" id="err-msg"></p>
+        <button id="btn-retry">Retry</button>
+      </section>
+    </main>
+    <script type="module" src="connect.ts"></script>
+  </body>
+</html>

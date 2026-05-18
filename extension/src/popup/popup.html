@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Coldpakku</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <div class="logo">[GBA]</div>
+      <h1>Coldpakku</h1>
+    </header>
+    <main>
+      <section id="state-disconnected" hidden>
+        <p class="muted">No GBA connected.</p>
+        <p>
+          Press <strong>Connect</strong> to authorize the Pico's USB-CDC
+          port. The GBA must be powered on with the session unlocked
+          (PIN entered).
+        </p>
+        <button id="btn-connect" class="primary">Connect GBA</button>
+      </section>
+
+      <section id="state-connected" hidden>
+        <div class="account">
+          <div class="label">Active account</div>
+          <div id="address-checksum" class="mono"></div>
+        </div>
+        <div class="gba-lock" id="gba-lock-block">
+          <div class="label">
+            Active network
+            <button id="btn-refresh-lock" class="link" title="Re-read the locked network from the GBA">refresh</button>
+          </div>
+          <div id="gba-lock-status" class="gba-lock-status"></div>
+          <p class="muted small">
+            <strong>The GBA is the authority.</strong> Whatever chain you
+            select on the cartridge with <kbd>L</kbd>/<kbd>R</kbd> is the
+            chain that dApps see (auto-updated via <code>chainChanged</code>).
+            There is no separate network selector here.
+          </p>
+        </div>
+        <button id="btn-disconnect" class="danger">Disconnect</button>
+      </section>
+
+      <section id="state-error" hidden>
+        <p class="error" id="error-msg"></p>
+        <button id="btn-retry">Retry</button>
+      </section>
+
+      <section id="state-pending" hidden>
+        <div class="pending-banner">
+          <div class="spinner-small"></div>
+          <span>Operation in progress. Confirm on the Game Boy.</span>
+        </div>
+        <h2 id="pending-title"></h2>
+        <div id="pending-body"></div>
+        <p class="hint">
+          Press <kbd>A</kbd> on the GBA to sign, <kbd>B</kbd> to reject.
+          Or use the button below to abort from here.
+        </p>
+        <button id="btn-cancel-active" class="danger">Cancel</button>
+      </section>
+    </main>
+    <footer>
+      <span class="muted">v0.1 &middot; firmware v4 &middot; WebSerial</span>
+      <button id="btn-settings" class="link" title="RPC settings">settings</button>
+    </footer>
+    <script type="module" src="popup.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,18 @@
+<!doctype html>
+<!--
+  Offscreen document. NEVER rendered to the user.
+  It exists only to host the WebSerial code: the MV3 service worker
+  cannot access navigator.serial, but an offscreen document can.
+
+  The SW talks to this page via chrome.runtime.sendMessage; see
+  src/background/serial-bridge.ts and src/offscreen/serial.ts.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>GBA Signer offscreen</title>
+  </head>
+  <body>
+    <script type="module" src="serial.ts"></script>
+  </body>
+</html>
