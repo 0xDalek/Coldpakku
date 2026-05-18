@@ -100,4 +100,4 @@ echo "Done. Artifacts:"
 ls -lh releases/ | grep -v '^total' | awk '{printf "  %-50s %s\n", $9, $5}'
 echo
 echo "Upload these files to:"
-echo "  https://github.com/<your-user>/gba-signer/releases/new"
+echo "  https://github.com/0xDalek/Coldpakku/releases/new"

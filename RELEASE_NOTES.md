@@ -200,8 +200,8 @@ Short list of what comes next, roughly in priority order:
 ## Build it yourself
 
 ```bash
-git clone https://github.com/<your-user>/gba-signer.git
-cd gba-signer
+git clone https://github.com/0xDalek/Coldpakku.git
+cd Coldpakku
 export DEVKITPRO=/path/to/devkitpro
 export DEVKITARM=$DEVKITPRO/devkitARM
 ./scripts/build_release.sh
