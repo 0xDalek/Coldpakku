@@ -5,7 +5,7 @@ and alternative firmware see [`PICO_BRIDGE.md`](PICO_BRIDGE.md).
 
 You will end up with a Raspberry Pi Pico that shows up on your computer as
 a USB serial device (`/dev/ttyACM0` on Linux/macOS, `COMx` on Windows) and
-relays bytes between the GBA Signer extension and the GBA link cable.
+relays bytes between the Coldpakku extension and the GBA link cable.
 
 ## What you need
 

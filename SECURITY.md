@@ -1,6 +1,6 @@
 # Security Policy
 
-GBA Signer (Coldpakku) is an experimental hardware wallet running on a
+Coldpakku is an experimental Ethereum hardware wallet running on a
 Game Boy Advance. Until we reach `v1.0.0` the project should be treated
 as **pre-release software**: do not store funds you cannot afford to
 lose, and please help us harden it by reporting issues responsibly.
@@ -26,7 +26,7 @@ Preferred contact:
 - **DM on X to [`@coldpakku`](https://x.com/coldpakku)**.
 
 Your first message can be short — for example, "I think I found a
-vulnerability in GBA Signer, can we move to a private channel?". If the
+vulnerability in Coldpakku, can we move to a private channel?". If the
 report contains sensitive details (exploit code, key material, PoCs)
 you can request an encrypted channel (PGP email, Signal, etc.) in that
 first DM and we will set one up before you share the details.

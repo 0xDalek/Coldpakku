@@ -1,7 +1,7 @@
 // EIP-1193 provider injected into every page (MAIN world). It announces
 // itself ONLY via EIP-6963 (does not clobber window.ethereum). Modern
 // dApps detect multi-injected EIP-6963 providers; older dApps that only
-// read window.ethereum will NOT work with GBA Signer — this is
+// read window.ethereum will NOT work with Coldpakku — this is
 // deliberate so we don't impersonate other wallets (MetaMask, Rabby...).
 
 export {};
@@ -99,7 +99,7 @@ const provider = new GbaProvider();
 // re-request it at any time via eip6963:requestProvider.
 const PROVIDER_INFO = {
   uuid: PROVIDER_UUID,
-  name: "GBA Signer",
+  name: "Coldpakku",
   icon: "data:image/svg+xml;base64," + btoa(svgIcon()),
   rdns: "tools.gba-signer",
 };

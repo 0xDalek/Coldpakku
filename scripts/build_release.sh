@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Builds all artifacts of a GBA Signer release and drops them under
+# Builds all artifacts of a Coldpakku release and drops them under
 # releases/ ready to be uploaded to a GitHub release.
 #
 # Produces (for VERSION=0.1.0):

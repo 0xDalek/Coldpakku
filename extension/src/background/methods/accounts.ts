@@ -101,7 +101,7 @@ export async function walletRequestPermissions(
   if (!wantsEthAccounts) {
     throw new RpcError(
       -32601,
-      `GBA Signer only supports the "eth_accounts" permission. You asked for: ${Object.keys(requested).join(", ") || "(nothing)"}.`,
+      `Coldpakku only supports the "eth_accounts" permission. You asked for: ${Object.keys(requested).join(", ") || "(nothing)"}.`,
     );
   }
   // Reuse the exact eth_requestAccounts flow: if already authorized

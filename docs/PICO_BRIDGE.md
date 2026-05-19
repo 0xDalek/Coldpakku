@@ -1,6 +1,6 @@
 # Pi Pico bridge — GBA Link Cable to USB
 
-Step-by-step guide for connecting GBA Signer to a PC through a Raspberry Pi
+Step-by-step guide for connecting Coldpakku to a PC through a Raspberry Pi
 Pico (RP2040). Replaces the old bridge based on a Raspberry Pi 3/4 +
 `/dev/ttyS0`. The Pico is cheaper (~4 EUR), needs no full OS, and its
 GPIOs are native 3.3 V CMOS — the same electrical level as the GBA's SIO

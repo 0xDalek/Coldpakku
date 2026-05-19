@@ -25,7 +25,7 @@ window.addEventListener("message", (ev: MessageEvent) => {
   // return a valid JSON-RPC error so the dApp doesn't hang showing
   // "Please confirm in wallet...".
   if (!chrome.runtime?.id) {
-    sendErrorBack(id, "GBA Signer: extension reload pending. Reload this tab (F5).");
+    sendErrorBack(id, "Coldpakku: extension reload pending. Reload this tab (F5).");
     return;
   }
   try {
@@ -35,7 +35,7 @@ window.addEventListener("message", (ev: MessageEvent) => {
         if (chrome.runtime.lastError) {
           sendErrorBack(
             id,
-            `GBA Signer SW error: ${chrome.runtime.lastError.message ?? "unknown"}. Reload this tab (F5).`,
+            `Coldpakku SW error: ${chrome.runtime.lastError.message ?? "unknown"}. Reload this tab (F5).`,
           );
           return;
         }
@@ -45,7 +45,7 @@ window.addEventListener("message", (ev: MessageEvent) => {
   } catch (e) {
     sendErrorBack(
       id,
-      `GBA Signer transport error: ${e instanceof Error ? e.message : String(e)}. Reload this tab (F5).`,
+      `Coldpakku transport error: ${e instanceof Error ? e.message : String(e)}. Reload this tab (F5).`,
     );
   }
 });

@@ -117,7 +117,7 @@ async function dispatch(origin: string, req: RpcRequest): Promise<unknown> {
       // 401/-32601 and confuse the dApp. Unknown eth_* methods DO get
       // forwarded (eth_call, eth_getLogs, etc. are legit chain calls).
       if (req.method.startsWith("wallet_")) {
-        throw new RpcError(-32601, `Method ${req.method} not supported by GBA Signer.`);
+        throw new RpcError(-32601, `Method ${req.method} not supported by Coldpakku.`);
       }
       return await forwardRpc(req.method, (req.params as any) ?? []);
   }
