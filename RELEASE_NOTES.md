@@ -194,6 +194,14 @@ sign with `A`. The statusbar will not advertise `L+R` in that case.
   Permit2 `PermitBatch` and OpenSea Seaport orders fall back to blind
   signing of the host-supplied hashes (with the legacy warning).
   Atomic types, strings, dynamic bytes and nested structs are covered.
+- **`eth_sendTransaction` calldata is blind-signed on-device** — the
+  cartridge shows `to`, `value`, `chainId`, `gas` and the raw calldata
+  hex, but does NOT decode ABI args. The "function: approve, spender:
+  …, amount: infinite" labels you see come from the browser extension
+  popup, which a compromised host could manipulate. v0.3 closes this
+  gap with a native ABI decoder for the ~30 most common selectors
+  (ERC-20, Permit, Uniswap V2/V3 swaps, multicall), mirroring what
+  v0.2 did for EIP-712.
 - **Single account** — derivation path is fixed to `m/44'/60'/0'/0/0`.
 - **BIP-39 passphrase ("25th word") not exposed in the UI.**
 - **PIN attempt counter is per-session**, not persisted across boots.
@@ -202,23 +210,36 @@ sign with `A`. The statusbar will not advertise `L+R` in that case.
 
 Short list of what comes next, roughly in priority order:
 
-1. **EIP-712 array support** in the on-device parser so Permit2
+1. **v0.3 — Native calldata decoder on the GBA.** Same idea as v0.2's
+   EIP-712 parser, applied to `eth_sendTransaction`. The cartridge
+   carries a hardcoded table of ~30 selectors (ERC-20, Permit, WETH,
+   Uniswap V2/V3 swaps, multicall…) and decodes the calldata args
+   on-device for atomic types (`address`, `uint*`, `int*`, `bytesN`,
+   `bool`, `string`, `bytes`). Parsed view by default; **L+R** toggles
+   to the raw hex. Unknown selectors fall back transparently to the
+   current hex view. Top-level decode for wrapper functions
+   (`execute`, `multicall`) without descending into their sub-payload.
+2. **v0.4 — Decoder plugin system for complex routers.** Per-protocol
+   sub-decoders (Universal Router commands, 1inch swap descriptions,
+   0x assembly batches, Curve / Balancer routers, LiFi bridges).
+   Mirrors the Ledger Live plugin model: one plugin per dApp router.
+3. **EIP-712 array support** in the on-device parser so Permit2
    `PermitBatch` and Seaport orders can also be verified on-device
    instead of falling back to blind sign.
-2. **Real-hardware testing on Ethereum mainnet** (only Polygon mainnet
+4. **Real-hardware testing on Ethereum mainnet** (only Polygon mainnet
    and Sepolia tested so far).
-3. **Signed firmware** — show a SHA-256 of the running ROM at boot so
+5. **Signed firmware** — show a SHA-256 of the running ROM at boot so
    the user can compare visually against the public release.
-4. **Native UF2 firmware for the Pico** so step 1 of the Pico
+6. **Native UF2 firmware for the Pico** so step 1 of the Pico
    quickstart becomes "drag this `.uf2`" — no MicroPython, no
    `mpremote`. Probably `pico-sdk` + `tinyusb` CDC.
-5. **Chrome Web Store listing**.
-6. **Multi-account** screen (`m/44'/60'/0'/0/N`) and optional BIP-39
+7. **Chrome Web Store listing**.
+8. **Multi-account** screen (`m/44'/60'/0'/0/N`) and optional BIP-39
    passphrase.
-7. **Persistent PIN failure counter** in SRAM (today the 3-strikes
+9. **Persistent PIN failure counter** in SRAM (today the 3-strikes
    counter is per-session).
-8. **Argon2id KDF** — strictly better than PBKDF2 against ASIC
-   attackers, but expensive on ARM7TDMI.
+10. **Argon2id KDF** — strictly better than PBKDF2 against ASIC
+    attackers, but expensive on ARM7TDMI.
 
 ## Build it yourself
 
