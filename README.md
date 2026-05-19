@@ -151,8 +151,16 @@ simpler, cheaper, and faster.
 - **Signing is RFC 6979** (deterministic) — independent of the GBA's
   weak RNG.
 
-For known limitations (PIN visible on screen, no secure element) and
-the roadmap to address them, see [`RELEASE_NOTES.md`](RELEASE_NOTES.md).
+EIP-712 typed data is **parsed on-device by default**: the cartridge
+re-derives `domainSeparator` and `messageHash` from the host's TLV,
+verifies them byte-for-byte, and shows the message fields flat-indented
+on the confirm screen. A mismatch hard-blocks the signature. Hold
+**L+R** if you want to toggle back to the raw hex view. See
+[`docs/PROTOCOL.md`](docs/PROTOCOL.md#typed_data-payload-v7).
+
+For known limitations (PIN visible on screen, EIP-712 arrays still
+blind-signed today, no secure element) and the roadmap to address them,
+see [`RELEASE_NOTES.md`](RELEASE_NOTES.md).
 
 ### Reporting a vulnerability
 

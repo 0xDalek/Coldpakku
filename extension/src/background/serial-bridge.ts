@@ -196,12 +196,14 @@ export class BridgeSession {
     domainSep: Uint8Array,
     messageHash: Uint8Array,
     humanText: Uint8Array,
+    treeBytes: Uint8Array,
   ): Promise<Uint8Array | null> {
     const r = await callOffscreen({
       kind: "sb-typedData",
       domainSepHex: bytesToHex(domainSep),
       messageHashHex: bytesToHex(messageHash),
       humanTextHex: bytesToHex(humanText),
+      treeBytesHex: bytesToHex(treeBytes),
     });
     return r.sigHex ? hexToBytes(r.sigHex) : null;
   }

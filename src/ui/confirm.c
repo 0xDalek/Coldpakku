@@ -6,9 +6,12 @@
 #include "../crypto/ethereum.h"
 #include "../crypto/eth_tx.h"
 #include "../crypto/eth_abi.h"
+#include "../crypto/eip712.h"
 
 #include <gba_input.h>
+#include <gba_base.h>
 #include <gba_systemcalls.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -1066,7 +1069,8 @@ static void render_hash_short(u32 row, const char* label,
 static void render_typed_page(const char* text, u32 textlen,
                               const u8 domain_sep[32], const u8 msg_hash[32],
                               u32 page, u32 npages, u32 byte_offset,
-                              int last_page_is_hashes) {
+                              int last_page_is_hashes,
+                              int parsed_available) {
     char buf[40];
     text_clear();
     text_titlebar("TYPED DATA", "WAIT");
@@ -1079,10 +1083,16 @@ static void render_typed_page(const char* text, u32 textlen,
         text_at(0, 5, "  dApp / ethers.js / wallet:");
         render_hash_short(8,  "domainSep:", domain_sep);
         render_hash_short(10, "msgHash :", msg_hash);
-        text_at(0, 13, "  GBA does NOT parse EIP-712");
-        text_at(0, 14, "  natively. Trust the host");
-        text_at(0, 15, "  for these hashes, BUT");
-        text_at(0, 16, "  verify the text above.");
+        if (parsed_available) {
+            text_at(0, 13, "  Cartridge already verified");
+            text_at(0, 14, "  these on-device.");
+            text_at(0, 15, "  L+R: back to parsed view.");
+        } else {
+            text_at(0, 13, "  GBA could NOT parse this");
+            text_at(0, 14, "  typed-data on-device.");
+            text_at(0, 15, "  Trust the host for these");
+            text_at(0, 16, "  hashes; verify text above.");
+        }
     } else {
         snprintf(buf, sizeof(buf), "  text %lu B  page %lu/%lu",
                  (unsigned long)textlen,
@@ -1093,36 +1103,501 @@ static void render_typed_page(const char* text, u32 textlen,
                          TEXT_LINES_PER_PAGE, &drawn);
     }
 
-    if (npages == 1) {
-        text_statusbar("A sign  B cancel");
-    } else if (page == 0) {
-        text_statusbar("A sign  B cancel  R hash >");
-    } else if (page + 1 == npages) {
-        text_statusbar("A sign  B cancel  L< text");
+    if (parsed_available) {
+        if (npages == 1) {
+            text_statusbar("A sign  B cancel  L+R parse");
+        } else if (page == 0) {
+            text_statusbar("A B  R>  L+R parse");
+        } else if (page + 1 == npages) {
+            text_statusbar("A B  L<  L+R parse");
+        } else {
+            text_statusbar("A B  L< R>  L+R parse");
+        }
     } else {
-        text_statusbar("A sign  B cancel  L< R>");
+        if (npages == 1) {
+            text_statusbar("A sign  B cancel");
+        } else if (page == 0) {
+            text_statusbar("A sign  B cancel  R hash >");
+        } else if (page + 1 == npages) {
+            text_statusbar("A sign  B cancel  L< text");
+        } else {
+            text_statusbar("A sign  B cancel  L< R>");
+        }
     }
 }
 
+/* ============================================================================
+ * v7 EIP-712 parsed view
+ *
+ * When the host provided a TLV tree and the on-device parser matches the
+ * hashes, the user can press L+R to switch from the blind text view to a
+ * parsed listing. Lines are pre-rendered into a flat, indented array
+ * (one struct field per line; nested structs are indented further) and
+ * paginated like the text view. Atomic values are formatted in-place:
+ *   - address     -> 0x12345678..AABB
+ *   - bool        -> true / false
+ *   - uintN/intN  -> decimal if it fits in 64 bits, else 0x<low16>... hex
+ *   - bytesN      -> 0x<hex truncado>
+ *   - string      -> "<truncated>"
+ *   - bytes       -> 0x<hex truncado>
+ * ============================================================================ */
+
+#define PARSED_MAX_LINES   96u
+#define PARSED_LINE_CHARS  29u   /* 28 visible + indent before label fits within 32 cols */
+
+typedef struct {
+    char text[PARSED_LINE_CHARS + 1];
+} parsed_line_t;
+
+/* Lives in EWRAM along with the rest of the typed-data workspace
+ * (~3 KB; negligible). Reused across confirm calls. */
+static EWRAM_BSS parsed_line_t g_parsed_lines[PARSED_MAX_LINES];
+static u32 g_parsed_line_count;
+static u8  g_parsed_overflow;   /* set when more than PARSED_MAX_LINES were needed */
+
+static int eip712_find_struct(const eip712_tree_t* t, const u8* name, u32 name_len) {
+    for (u8 i = 0; i < t->num_types; i++) {
+        if (t->types[i].name_len == name_len &&
+            memcmp(t->tlv_base + t->types[i].name_off, name, name_len) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int type_starts_with(const u8* s, u32 len, const char* pre) {
+    u32 p = strlen(pre);
+    return len >= p && memcmp(s, pre, p) == 0;
+}
+
+/* Truncates b into hex form "0x1234..abcd" capped at `cap` chars. */
+static void short_hex_into(char* out, u32 cap, const u8* b, u32 n) {
+    if (cap < 13) { if (cap) out[0] = '\0'; return; }
+    if (n <= 4) {
+        out[0] = '0'; out[1] = 'x';
+        for (u32 i = 0; i < n; i++) {
+            static const char hexd[] = "0123456789abcdef";
+            out[2 + i * 2] = hexd[(b[i] >> 4) & 0xF];
+            out[3 + i * 2] = hexd[b[i] & 0xF];
+        }
+        out[2 + n * 2] = '\0';
+        return;
+    }
+    static const char hexd[] = "0123456789abcdef";
+    out[0] = '0'; out[1] = 'x';
+    for (int i = 0; i < 4; i++) {
+        out[2 + i * 2] = hexd[(b[i] >> 4) & 0xF];
+        out[3 + i * 2] = hexd[b[i] & 0xF];
+    }
+    out[10] = '.'; out[11] = '.';
+    for (int i = 0; i < 2; i++) {
+        out[12 + i * 2] = hexd[(b[n - 2 + i] >> 4) & 0xF];
+        out[13 + i * 2] = hexd[b[n - 2 + i] & 0xF];
+    }
+    out[16] = '\0';
+}
+
+/* Reads N raw bytes (big-endian) as an unsigned value. If N > 8 the
+ * function only reads the LOW 8 bytes (after verifying the high bytes
+ * are zero). Returns 1 if the value fit in u64, 0 otherwise. */
+static int read_uint_be_u64(const u8* p, u32 n, u64* out) {
+    if (n == 0) { *out = 0; return 1; }
+    if (n > 8) {
+        for (u32 i = 0; i < n - 8; i++) {
+            if (p[i] != 0) return 0;
+        }
+        p += n - 8;
+        n = 8;
+    }
+    u64 v = 0;
+    for (u32 i = 0; i < n; i++) {
+        v = (v << 8) | (u64)p[i];
+    }
+    *out = v;
+    return 1;
+}
+
+/* Formats one atomic / dynamic value into `out` (capped at `cap` chars).
+ * `cursor` is advanced past the value bytes consumed. Returns 0 on OK,
+ * -1 on malformed; the line is left as "<bad>" on errors. */
+static int format_atomic_value(const eip712_tree_t* t,
+                               const u8* type_str, u32 type_len,
+                               u32* cursor, char* out, u32 cap) {
+    if (cap < 2) { if (cap) out[0] = '\0'; return -1; }
+    const u8* tlv = t->tlv_base;
+    u32 tlv_len = t->tlv_len;
+
+    /* string */
+    if (type_len == 6 && memcmp(type_str, "string", 6) == 0) {
+        if (*cursor + 4 > tlv_len) { snprintf(out, cap, "<bad>"); return -1; }
+        u32 slen = ((u32)tlv[*cursor] << 24) | ((u32)tlv[*cursor + 1] << 16) |
+                   ((u32)tlv[*cursor + 2] << 8) | tlv[*cursor + 3];
+        *cursor += 4;
+        if (*cursor + slen > tlv_len) { snprintf(out, cap, "<bad>"); return -1; }
+        u32 show = slen < (cap - 3) ? slen : (cap - 4);
+        out[0] = '"';
+        memcpy(out + 1, tlv + *cursor, show);
+        if (show < slen) { out[1 + show++] = '~'; }
+        out[1 + show] = '"';
+        out[2 + show] = '\0';
+        *cursor += slen;
+        return 0;
+    }
+
+    /* dynamic bytes */
+    if (type_len == 5 && memcmp(type_str, "bytes", 5) == 0) {
+        if (*cursor + 4 > tlv_len) { snprintf(out, cap, "<bad>"); return -1; }
+        u32 slen = ((u32)tlv[*cursor] << 24) | ((u32)tlv[*cursor + 1] << 16) |
+                   ((u32)tlv[*cursor + 2] << 8) | tlv[*cursor + 3];
+        *cursor += 4;
+        if (*cursor + slen > tlv_len) { snprintf(out, cap, "<bad>"); return -1; }
+        short_hex_into(out, cap, tlv + *cursor, slen);
+        *cursor += slen;
+        return 0;
+    }
+
+    /* address */
+    if (type_len == 7 && memcmp(type_str, "address", 7) == 0) {
+        if (*cursor + 20 > tlv_len) { snprintf(out, cap, "<bad>"); return -1; }
+        short_hex_into(out, cap, tlv + *cursor, 20);
+        *cursor += 20;
+        return 0;
+    }
+
+    /* bool */
+    if (type_len == 4 && memcmp(type_str, "bool", 4) == 0) {
+        if (*cursor + 1 > tlv_len) { snprintf(out, cap, "<bad>"); return -1; }
+        snprintf(out, cap, "%s", tlv[*cursor] ? "true" : "false");
+        *cursor += 1;
+        return 0;
+    }
+
+    /* uintN / intN */
+    if (type_starts_with(type_str, type_len, "uint") || type_starts_with(type_str, type_len, "int")) {
+        u32 prefix = type_starts_with(type_str, type_len, "uint") ? 4 : 3;
+        u32 bits = 256;
+        if (type_len > prefix) {
+            bits = 0;
+            for (u32 i = prefix; i < type_len; i++) {
+                if (type_str[i] < '0' || type_str[i] > '9') { snprintf(out, cap, "<bad>"); return -1; }
+                bits = bits * 10 + (type_str[i] - '0');
+            }
+        }
+        if (bits == 0 || bits > 256 || (bits & 7) != 0) { snprintf(out, cap, "<bad>"); return -1; }
+        u32 nbytes = bits / 8;
+        if (*cursor + nbytes > tlv_len) { snprintf(out, cap, "<bad>"); return -1; }
+        /* "infinite" sentinel: all-ones for uint128 or wider. Covers both
+         * ERC-20 approve (uint256 max = 2^256-1) and Permit2 amount
+         * (uint160 max = 2^160-1), which dApps use to mean "no cap". */
+        if (nbytes >= 16) {
+            int all_ones = 1;
+            for (u32 i = 0; i < nbytes; i++) {
+                if (tlv[*cursor + i] != 0xff) { all_ones = 0; break; }
+            }
+            if (all_ones) {
+                snprintf(out, cap, "MAX (infinite)");
+                *cursor += nbytes;
+                return 0;
+            }
+        }
+        u64 v;
+        if (read_uint_be_u64(tlv + *cursor, nbytes, &v)) {
+            u64_to_str(v, out, cap);
+        } else {
+            /* value too big for u64 - show as hex of the low 16 bytes
+             * prefixed with "0x" so the user knows it overflowed. */
+            u32 hex_bytes = nbytes < 16 ? nbytes : 16;
+            const u8* base = tlv + *cursor + (nbytes - hex_bytes);
+            short_hex_into(out, cap, base, hex_bytes);
+        }
+        *cursor += nbytes;
+        return 0;
+    }
+
+    /* bytesN (1..32) */
+    if (type_starts_with(type_str, type_len, "bytes")) {
+        u32 n = 0;
+        for (u32 i = 5; i < type_len; i++) {
+            if (type_str[i] < '0' || type_str[i] > '9') { snprintf(out, cap, "<bad>"); return -1; }
+            n = n * 10 + (type_str[i] - '0');
+        }
+        if (n < 1 || n > 32) { snprintf(out, cap, "<bad>"); return -1; }
+        if (*cursor + n > tlv_len) { snprintf(out, cap, "<bad>"); return -1; }
+        short_hex_into(out, cap, tlv + *cursor, n);
+        *cursor += n;
+        return 0;
+    }
+
+    snprintf(out, cap, "<unsup>");
+    return -1;
+}
+
+/* Adds one line to the parsed-line buffer (with truncation if it
+ * overflows the cap). Caller is responsible for advancing whatever
+ * cursor it walks. */
+static void push_line(const char* fmt, ...) {
+    if (g_parsed_line_count >= PARSED_MAX_LINES) {
+        g_parsed_overflow = 1;
+        return;
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(g_parsed_lines[g_parsed_line_count].text,
+              sizeof(g_parsed_lines[g_parsed_line_count].text), fmt, ap);
+    va_end(ap);
+    g_parsed_line_count++;
+}
+
+/* Walks a struct's values, emitting one parsed_line per field. Recurses
+ * into nested structs (with deeper indent). */
+static void walk_struct_for_lines(const eip712_tree_t* t, u8 type_idx,
+                                  u32* cursor, u8 depth) {
+    if (depth >= EIP712_MAX_DEPTH || type_idx >= t->num_types) return;
+    const eip712_type_t* ty = &t->types[type_idx];
+    char indent[12];
+    u8 ind = depth * 2;
+    if (ind > 10) ind = 10;
+    memset(indent, ' ', ind);
+    indent[ind] = '\0';
+
+    for (u8 i = 0; i < ty->num_fields; i++) {
+        const eip712_field_t* f = &ty->fields[i];
+        const u8* ftype = t->tlv_base + f->type_off;
+        u8 ftype_len = f->type_len;
+        const u8* fname = t->tlv_base + f->name_off;
+        u8 fname_len = f->name_len;
+
+        /* Arrays (never reached when status == OK_MATCH but defensive). */
+        if (ftype_len > 0 && ftype[ftype_len - 1] == ']') {
+            push_line("%s%.*s: <array>", indent, (int)fname_len, fname);
+            return;
+        }
+
+        s32 child_idx = eip712_find_struct(t, ftype, ftype_len);
+        if (child_idx >= 0) {
+            push_line("%s%.*s:", indent, (int)fname_len, fname);
+            walk_struct_for_lines(t, (u8)child_idx, cursor, depth + 1);
+            continue;
+        }
+
+        char valbuf[24];
+        format_atomic_value(t, ftype, ftype_len, cursor, valbuf, sizeof(valbuf));
+        push_line("%s%.*s: %s", indent, (int)fname_len, fname, valbuf);
+    }
+}
+
+/* Top-level build: emit a "Domain:" header, walk EIP712Domain values,
+ * blank line, "<PrimaryType>:" header, walk the message values. */
+static void build_parsed_lines(const eip712_tree_t* t) {
+    g_parsed_line_count = 0;
+    g_parsed_overflow = 0;
+
+    /* domain */
+    push_line("Domain:");
+    u32 cursor = t->domain_values_off;
+    walk_struct_for_lines(t, 0, &cursor, 1);
+
+    if (g_parsed_line_count < PARSED_MAX_LINES) {
+        g_parsed_lines[g_parsed_line_count++].text[0] = '\0';   /* blank line */
+    }
+
+    /* message */
+    const eip712_type_t* pty = &t->types[t->primary_type_index];
+    push_line("%.*s:", (int)pty->name_len, t->tlv_base + pty->name_off);
+    cursor = t->message_values_off;
+    walk_struct_for_lines(t, t->primary_type_index, &cursor, 1);
+}
+
+#define PARSED_LINES_PER_PAGE  13u
+
+static u32 parsed_total_pages(void) {
+    if (g_parsed_line_count == 0) return 1;
+    return (g_parsed_line_count + PARSED_LINES_PER_PAGE - 1) / PARSED_LINES_PER_PAGE;
+}
+
+static void render_typed_parsed_page(const eip712_tree_t* t, u32 page, u32 npages) {
+    char buf[40];
+    text_clear();
+    text_titlebar("TYPED DATA OK", "PARSE");
+
+    /* Header line: primaryType plus chain-id verification glyph. */
+    const eip712_type_t* pty = &t->types[t->primary_type_index];
+    if (t->has_chain_id) {
+        snprintf(buf, sizeof(buf), "%.*s  chain:%lu",
+                 (int)pty->name_len, t->tlv_base + pty->name_off,
+                 (unsigned long)t->domain_chain_id);
+    } else {
+        snprintf(buf, sizeof(buf), "%.*s  chain:any",
+                 (int)pty->name_len, t->tlv_base + pty->name_off);
+    }
+    text_at(0, 2, buf);
+
+    snprintf(buf, sizeof(buf), "  pg %lu/%lu  hash MATCH",
+             (unsigned long)(page + 1), (unsigned long)npages);
+    text_at(0, 3, buf);
+
+    u32 start = page * PARSED_LINES_PER_PAGE;
+    for (u32 i = 0; i < PARSED_LINES_PER_PAGE; i++) {
+        u32 li = start + i;
+        if (li >= g_parsed_line_count) break;
+        text_at(0, 5 + i, g_parsed_lines[li].text);
+    }
+
+    if (g_parsed_overflow && page + 1 == npages) {
+        text_at(0, 18, "(tree truncated)");
+    }
+
+    if (npages == 1) {
+        text_statusbar("A sign  B cancel  L+R blind");
+    } else if (page == 0) {
+        text_statusbar("A B  R>  L+R blind");
+    } else if (page + 1 == npages) {
+        text_statusbar("A B  L<  L+R blind");
+    } else {
+        text_statusbar("A B  L< R>  L+R blind");
+    }
+}
+
+static void render_typed_mismatch_page(const eip712_tree_t* t,
+                                       const u8 host_ds[32],
+                                       const u8 host_mh[32]) {
+    text_clear();
+    text_titlebar("MISMATCH!", "STOP");
+    text_at(0, 2,  "  HOST HASH MISMATCH");
+    text_at(0, 4,  "The host sent hashes that");
+    text_at(0, 5,  "do NOT match the typed");
+    text_at(0, 6,  "data the cartridge parsed.");
+    text_at(0, 8,  "This is a strong sign of a");
+    text_at(0, 9,  "compromised host. Signing");
+    text_at(0, 10, "is BLOCKED.");
+    /* Show a couple of bytes of each so the user can see the diff. */
+    char buf[40];
+    static const char hexd[] = "0123456789abcdef";
+    char h1[9], h2[9];
+    for (int i = 0; i < 4; i++) {
+        h1[i*2]   = hexd[(host_ds[i]>>4)&0xF];
+        h1[i*2+1] = hexd[host_ds[i]&0xF];
+        h2[i*2]   = hexd[(t->our_domain_separator[i]>>4)&0xF];
+        h2[i*2+1] = hexd[t->our_domain_separator[i]&0xF];
+    }
+    h1[8] = h2[8] = '\0';
+    snprintf(buf, sizeof(buf), "  ds host : %s..", h1);
+    text_at(0, 13, buf);
+    snprintf(buf, sizeof(buf), "  ds ours : %s..", h2);
+    text_at(0, 14, buf);
+    (void)host_mh;
+    text_statusbar("B cancel  (A disabled)");
+}
+
+/* Combo detector: L+R held simultaneously, single-press protected.
+ * Returns 1 ONCE per combo session. */
+typedef struct {
+    int single_l_pending;
+    int single_r_pending;
+    int combo_used;
+} lr_combo_state_t;
+
+static void lr_combo_init(lr_combo_state_t* s) {
+    s->single_l_pending = 0;
+    s->single_r_pending = 0;
+    s->combo_used = 0;
+}
+
+/* Returns:
+ *   +1 if a combo just triggered
+ *    0 if nothing actionable
+ *   -1 if L was just released as a single (caller pages left)
+ *   -2 if R was just released as a single (caller pages right) */
+static int lr_combo_step(lr_combo_state_t* s, u16 pressed, u16 held, u16 released) {
+    if (pressed & KEY_L) s->single_l_pending = 1;
+    if (pressed & KEY_R) s->single_r_pending = 1;
+
+    int both_held = (held & (KEY_L|KEY_R)) == (KEY_L|KEY_R);
+    if (both_held) {
+        s->single_l_pending = 0;
+        s->single_r_pending = 0;
+        if (!s->combo_used) {
+            s->combo_used = 1;
+            return 1;
+        }
+        return 0;
+    }
+
+    if (!(held & (KEY_L|KEY_R))) {
+        s->combo_used = 0;
+    }
+
+    if ((released & KEY_L) && s->single_l_pending) {
+        s->single_l_pending = 0;
+        return -1;
+    }
+    if ((released & KEY_R) && s->single_r_pending) {
+        s->single_r_pending = 0;
+        return -2;
+    }
+    return 0;
+}
+
 int confirm_typed_data(const char* text, u32 textlen,
-                       const u8 domain_sep[32], const u8 msg_hash[32]) {
+                       const u8 domain_sep[32], const u8 msg_hash[32],
+                       const eip712_tree_t* tree,
+                       eip712_status_t parse_status) {
+    /* Build the parsed-line buffer up front if the tree is verifiable.
+     * It's cheap (~few ms for typical payloads) and means the L+R
+     * toggle is instantaneous. */
+    int parsed_available = (tree != NULL && parse_status == EIP712_OK_MATCH);
+    int mismatch = (tree != NULL && parse_status == EIP712_OK_MISMATCH);
+    if (parsed_available) {
+        build_parsed_lines(tree);
+    }
+
+    /* If the host clearly lied about the hashes, refuse to sign before
+     * the user even gets a chance to. Only B is honoured. */
+    if (mismatch) {
+        int dirty = 1;
+        for (;;) {
+            if (dirty) {
+                render_typed_mismatch_page(tree, domain_sep, msg_hash);
+                dirty = 0;
+            }
+            VBlankIntrWait();
+            input_poll();
+            u16 k = input_pressed();
+            if (k & KEY_B) { wait_release(); return 0; }
+        }
+    }
+
     u32 page_offsets[MAX_TEXT_PAGES];
     u32 text_pages = compute_page_offsets((const u8*)text, textlen,
                                           MAX_TEXT_PAGES - 1, page_offsets);
     if (text_pages == 0) text_pages = 1;
-    /* we always append the extra hashes page at the end */
-    u32 npages = text_pages + 1;
+    u32 blind_npages = text_pages + 1;   /* +1 for the hashes recap page */
+    u32 parsed_npages = parsed_available ? parsed_total_pages() : 0;
 
-    u32 cur = 0;
+    /* Default: parsed view when the cartridge could re-derive the hashes;
+     * fall back to blind view (raw text + hex hashes) otherwise. The user
+     * can still toggle to the blind hex view with L+R if they want to
+     * eyeball the raw hashes. */
+    int show_parsed = parsed_available ? 1 : 0;
+    u32 cur_blind = 0;
+    u32 cur_parsed = 0;
     int dirty = 1;
     int blink = 1;
     int frame = 0;
 
+    lr_combo_state_t lrs;
+    lr_combo_init(&lrs);
+
     for (;;) {
         if (dirty) {
-            u32 byte_off = (cur < text_pages) ? page_offsets[cur] : 0;
-            render_typed_page(text, textlen, domain_sep, msg_hash,
-                              cur, npages, byte_off, 1);
+            if (show_parsed) {
+                render_typed_parsed_page(tree, cur_parsed, parsed_npages);
+            } else {
+                u32 byte_off = (cur_blind < text_pages) ? page_offsets[cur_blind] : 0;
+                render_typed_page(text, textlen, domain_sep, msg_hash,
+                                  cur_blind, blind_npages, byte_off, 1,
+                                  parsed_available);
+            }
             dirty = 0;
         }
         VBlankIntrWait();
@@ -1133,12 +1608,42 @@ int confirm_typed_data(const char* text, u32 textlen,
             blink = !blink;
         }
 
-        u16 k = input_pressed();
-        if (!k) continue;
-        if (k & KEY_A) { wait_release(); return 1; }
-        if (k & KEY_B) { wait_release(); return 0; }
-        if ((k & KEY_R) && cur + 1 < npages) { cur++; dirty = 1; }
-        if ((k & KEY_L) && cur > 0)          { cur--; dirty = 1; }
+        u16 pressed  = input_pressed();
+        u16 held     = input_held();
+        u16 released = input_released();
+
+        if (pressed & KEY_A) { wait_release(); return 1; }
+        if (pressed & KEY_B) { wait_release(); return 0; }
+
+        int combo = parsed_available ? lr_combo_step(&lrs, pressed, held, released) : 0;
+        if (combo == 1) {
+            show_parsed = !show_parsed;
+            dirty = 1;
+            continue;
+        }
+        if (combo == -1) {
+            if (show_parsed) {
+                if (cur_parsed > 0) { cur_parsed--; dirty = 1; }
+            } else {
+                if (cur_blind > 0) { cur_blind--; dirty = 1; }
+            }
+            continue;
+        }
+        if (combo == -2) {
+            if (show_parsed) {
+                if (cur_parsed + 1 < parsed_npages) { cur_parsed++; dirty = 1; }
+            } else {
+                if (cur_blind + 1 < blind_npages)   { cur_blind++; dirty = 1; }
+            }
+            continue;
+        }
+
+        /* When the tree isn't parseable we keep the v6 input semantics:
+         * single L/R navigate immediately, no combo. */
+        if (!parsed_available) {
+            if ((pressed & KEY_R) && cur_blind + 1 < blind_npages) { cur_blind++; dirty = 1; }
+            if ((pressed & KEY_L) && cur_blind > 0)                { cur_blind--; dirty = 1; }
+        }
     }
 }
 

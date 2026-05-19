@@ -130,3 +130,15 @@ GBA -> PC: 65-byte signature (r||s||sentinel)
 The bridge cannot lie about fields: the GBA shows exactly what it will sign
 because it computes the hash itself. The `to` address uses mixed EIP-55
 casing to reduce transcription mistakes.
+
+EIP-712 typed data follows the same principle in v0.2: the host always
+ships the precomputed `domainSeparator` / `messageHash` **and** a TLV
+serialization of the typed data. By default the cartridge decodes the
+TLV, recomputes both hashes on-device with `src/crypto/eip712.c`, shows
+the message fields parsed (flat-indented, struct-aware up to depth 4),
+and refuses to sign on mismatch. `L+R` toggles to the legacy blind view
+(text + hex hashes) for users who want to verify the raw bytes. Arrays
+and unsupported types make the parser silently fall back to the blind
+view — no toggle, host hashes only, with a clear "trust the host"
+warning. See the [protocol spec](PROTOCOL.md#typed_data-payload-v7) for
+the wire layout.

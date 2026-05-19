@@ -38,13 +38,27 @@ void confirm_show_broadcasting(void);
  * screen (paginated if long). Returns 1 if A (sign), 0 if B (cancel). */
 int confirm_personal_sign(const u8* msg, u32 msglen);
 
-/* Confirms an EIP-712 typed_data signature. Displays the pretty-printed
- * human text the host produced (domain.name/version/chainId/
- * verifyingContract + message), and the domainSeparator and messageHash
- * hashes in truncated hex at the end for manual verification. Returns
- * 1 if A (sign), 0 if B (cancel). */
+/* Confirms an EIP-712 typed_data signature.
+ *
+ * Default view: shows the pretty-printed human text the host produced
+ * (domain.name/version/chainId/verifyingContract + message) and the
+ * domainSeparator + messageHash in truncated hex for manual
+ * verification, like the v6 behaviour.
+ *
+ * v7 (parsed view): if `tree != NULL` and `parse_status` is OK_MATCH,
+ * the user can hold L+R simultaneously to toggle into a view that lists
+ * every parsed field, with the on-device-recomputed hashes confirmed to
+ * match the host's. If parse_status is OK_MISMATCH the screen is locked
+ * to a "HOST HASH MISMATCH" warning and only B is accepted (we refuse
+ * to blind-sign a tree the host clearly lied about). For tree == NULL
+ * or any ERR_* status the legacy blind-only screen is shown.
+ *
+ * Returns 1 if A (sign), 0 if B (cancel). */
+#include "../crypto/eip712.h"
 int confirm_typed_data(const char* text, u32 textlen,
-                       const u8 domain_sep[32], const u8 msg_hash[32]);
+                       const u8 domain_sep[32], const u8 msg_hash[32],
+                       const eip712_tree_t* tree,
+                       eip712_status_t parse_status);
 
 /* Confirms a dApp's connection request. Shows the origin (host) asking
  * for access to the GBA's address. Returns 1 if A (approve), 0 if B

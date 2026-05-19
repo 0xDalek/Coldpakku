@@ -4,7 +4,8 @@
 #include "../types.h"
 
 /*
- * Handshake protocol (v4 - multi-opcode: tx + get_address + personal_sign + typed_data):
+ * Handshake protocol (v7 - multi-opcode: tx + get_address + personal_sign
+ * + typed_data with optional on-device TLV tree for clear signing):
  *
  *   Common to every flow:
  *     GBA  -> PC : 0xAA                (ready, pulsed every 0.5 s)
@@ -36,14 +37,66 @@
  *                  or cancel 0xFF
  *
  *   --- PROTO_TYPED_DATA (0xD1) - EIP-712 signature ---
+ *     (wire v7: payload extended with an optional TLV tree of the typed
+ *     data so the GBA can verify the hashes on-device when the user asks
+ *     for it. The legacy v6 layout was just ds+mh+text. v7 always appends
+ *     the 2B tree_len; tree_len=0 keeps the blind-only flow.)
+ *
  *     PC   -> GBA: 32B domainSeparator + 32B messageHash
- *                  + 4B text_len + N bytes UTF-8 human text (up to PROTO_TYPED_TEXT_MAX)
- *     GBA computes keccak256(0x1901 || domainSeparator || messageHash) without
- *     parsing EIP-712. GBA shows the human text (pretty-printed by the host)
- *     plus the hashes in truncated hex at the end for manual verification.
+ *                  + 4B text_len + N bytes UTF-8 human text (1..PROTO_TYPED_TEXT_MAX)
+ *                  + 2B tree_len + M bytes typed-data TLV (0..PROTO_TYPED_TREE_MAX)
+ *
+ *     The GBA always computes keccak256(0x1901 || domainSeparator ||
+ *     messageHash) and shows the host-supplied human text plus the hashes
+ *     in truncated hex. If the user presses L+R on the confirm screen and
+ *     tree_len > 0, the GBA decodes the TLV, rebuilds the types and the
+ *     domain/message values, recomputes domainSeparator and messageHash
+ *     on-device, and compares them byte-for-byte against the host-supplied
+ *     ones. Match -> parsed view with chain-id lock enforcement and field
+ *     listing. Mismatch -> "HOST HASH MISMATCH" screen (cancel only).
+ *
  *     A to sign / B to cancel.
  *     GBA  -> PC : 0xCE SIGSTART + 65B sig (v = 0xFE sentinel)
  *                  or cancel 0xFF
+ *                  or 0xFD REJECT_CHAIN + 4B expected + 4B got (when
+ *                      tree_len > 0, the user enters parsed view, and
+ *                      domain.chainId mismatches the cartridge lock).
+ *
+ *     TLV tree layout (sent after the 2B tree_len, all little structures
+ *     are length-prefixed by 1 byte; multibyte integers are big-endian):
+ *
+ *       1B  num_types               (1..EIP712_MAX_TYPES, see eip712.h)
+ *       repeat num_types times:
+ *         1B  name_len              (1..EIP712_MAX_NAME_LEN)
+ *         Nb  name                  (ASCII, e.g. "EIP712Domain", "Permit")
+ *         1B  num_fields            (1..EIP712_MAX_FIELDS_PER_TYPE)
+ *         repeat num_fields times:
+ *           1B  fname_len           (1..EIP712_MAX_NAME_LEN)
+ *           Nb  fname               (ASCII)
+ *           1B  ftype_len           (1..EIP712_MAX_TYPE_LEN)
+ *           Nb  ftype               (ASCII: "uint256", "address", "bytes",
+ *                                    "string", "bytes32", "<StructName>",
+ *                                    "<StructName>[]"...; arrays are
+ *                                    accepted by the parser but produce
+ *                                    UNSUPPORTED in v0.2)
+ *       1B  primary_type_index      (0..num_types-1)
+ *       N B domain_values           (flat values for types[0], expected
+ *                                    to be "EIP712Domain"; encoding below)
+ *       N B message_values          (flat values for types[primary_type])
+ *
+ *     Value encoding (driven by the field type string, recursive):
+ *       - uintN, intN  (N=8..256 multiple of 8): N/8 bytes big-endian
+ *       - address:                               20 bytes raw
+ *       - bool:                                  1 byte (0/1)
+ *       - bytesN  (N=1..32):                     N bytes raw
+ *       - string:                                4B BE length + UTF-8 bytes
+ *       - bytes:                                 4B BE length + raw bytes
+ *       - <StructType>:                          recursive, fields in order
+ *       - arrays:                                4B BE count + count items
+ *                                                (v0.2 parser flags them as
+ *                                                UNSUPPORTED but still
+ *                                                consumes the bytes so the
+ *                                                stream stays in sync)
  *
  *   --- PROTO_TXRESULT (0xCF) - broadcast feedback (only after PROTO_TX_RLP) ---
  *     PC   -> GBA: 1B status (0x00=BROADCAST_OK, 0x01=BROADCAST_ERR, 0x02=NO_BROADCAST)
@@ -182,6 +235,12 @@
 /* Caps for the new opcodes. EWRAM has 256 KB so there's plenty. */
 #define PROTO_PERSONAL_MSG_MAX  4096u
 #define PROTO_TYPED_TEXT_MAX    4096u
+
+/* v7: cap on the optional EIP-712 TLV tree appended to PROTO_TYPED_DATA.
+ * A Permit2 PermitSingle weighs ~280 B; 8 KB leaves room for fat OpenSea-
+ * style payloads while staying comfortable in EWRAM. tree_len = 0 means
+ * the host did not send a tree (legacy blind-only flow). */
+#define PROTO_TYPED_TREE_MAX    8192u
 
 /* Receives opcode + length-prefixed RLP payload from the PC.
  * Writes the bytes into out_buf and the length into *out_len.

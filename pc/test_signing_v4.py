@@ -38,6 +38,7 @@ from protocol import (
     perform_get_address,
     perform_personal_sign,
     perform_typed_data,
+    serialize_typed_data_tlv,
 )
 from sig_recover import normalize_low_s
 
@@ -128,7 +129,7 @@ def step_get_address(transport):
 
 def step_personal_sign(transport, expected_addr):
     print("\n[2/3] PROTO_PERSONAL_SIGN")
-    msg = b"GBA Signer v4 personal_sign smoke test\n"
+    msg = b"Coldpakku v4 personal_sign smoke test\n"
     print(f"    msg ({len(msg)} bytes): {msg.decode()!r}")
     print("    --> look at the GBA and press A to sign")
     sig = perform_personal_sign(transport, msg)
@@ -187,9 +188,14 @@ def step_typed_data(transport, expected_addr):
     print(f"    domainSep: {domain_sep.hex()}")
     print(f"    msgHash  : {msg_hash.hex()}")
     print(f"    digest   : {eip712_digest.hex()}")
-    print("    --> look at the GBA, navigate with L/R, press A to sign")
+    # v7: also send the TLV tree so the user can press L+R on the
+    # cartridge to verify the hashes on-device. The tree is optional;
+    # pass b"" to fall back to blind-only mode.
+    tree_bytes = serialize_typed_data_tlv(PERMIT_TYPED_DATA)
+    print(f"    typed-data TLV tree: {len(tree_bytes)} bytes")
+    print("    --> look at the GBA: A signs, L+R toggles parsed view")
 
-    sig = perform_typed_data(transport, domain_sep, msg_hash, human_text)
+    sig = perform_typed_data(transport, domain_sep, msg_hash, human_text, tree_bytes)
     if sig is None:
         print("    USER CANCELLED")
         return False

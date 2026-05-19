@@ -20,6 +20,14 @@
 
 import { keccak256, concatBytes, hexToBytes, utf8ToBytes } from "./keccak";
 
+// Caps mirrored in src/crypto/eip712.h and docs/PROTOCOL.md. The wire
+// format and the on-device parser refuse anything bigger.
+export const EIP712_MAX_TYPES             = 32;
+export const EIP712_MAX_FIELDS_PER_TYPE   = 32;
+export const EIP712_MAX_NAME_LEN          = 32;
+export const EIP712_MAX_TYPE_LEN          = 40;
+export const EIP712_MAX_STRING_LEN        = 1024;
+
 interface TypedField {
   name: string;
   type: string;
@@ -208,6 +216,251 @@ function intToWord32(v: any): Uint8Array {
   const mask = (1n << 256n) - 1n;
   const u = n & mask;
   return uintToWord32(u);
+}
+
+// ============================================================================
+// TLV serialization for the on-device parser (PROTO_TYPED_DATA v7 tree)
+// ============================================================================
+
+/** Thrown when the typed data does not fit in the parser's caps. The
+ * caller (sign.ts) is expected to fall back to blind-only mode
+ * (`tree_len = 0` on the wire) and log a warning, NOT abort the signing
+ * — the GBA still gets the host-supplied hashes and pretty text. */
+export class TLVTooBigError extends Error {}
+
+/** Serializes a TypedData into the TLV format defined by
+ * docs/PROTOCOL.md. Layout (all multi-byte ints big-endian):
+ *
+ *   1B num_types
+ *   for each type: 1B name_len + name + 1B num_fields
+ *                  + for each field: 1B fname_len + fname
+ *                                  + 1B ftype_len + ftype
+ *   1B primary_type_index
+ *   <domain_values> (driven by types[0] = EIP712Domain)
+ *   <message_values> (driven by types[primary])
+ *
+ * Convention: index 0 is always EIP712Domain. Index 1 is the primaryType
+ * unless EIP712Domain references a struct (rare; we DFS-collect deps in
+ * declaration order to keep the layout deterministic).
+ *
+ * Arrays (T[] / T[N]) are serialized as `4B count + count items`. The
+ * on-device parser flags them as UNSUPPORTED in v0.2 but still walks
+ * past the bytes so the framing stays in sync.
+ */
+export function serializeTypedDataTLV(td: TypedData): Uint8Array {
+  if (!td.types || !td.types["EIP712Domain"]) {
+    throw new Error("serializeTypedDataTLV: missing EIP712Domain in types");
+  }
+  if (!td.types[td.primaryType]) {
+    throw new Error(`serializeTypedDataTLV: unknown primaryType ${td.primaryType}`);
+  }
+
+  // DFS-collect all referenced struct types, EIP712Domain first, then
+  // the primary type, then any transitive dep of either, in discovery
+  // order. This keeps the layout deterministic across the host and the
+  // device, and lets the on-device parser do a single forward pass.
+  const order: string[] = [];
+  const seen = new Set<string>();
+  function collect(typeName: string) {
+    if (seen.has(typeName)) return;
+    if (!td.types[typeName]) return; // primitive / atomic, skip
+    seen.add(typeName);
+    order.push(typeName);
+    for (const f of td.types[typeName]) {
+      collect(baseType(f.type));
+    }
+  }
+  collect("EIP712Domain");
+  collect(td.primaryType);
+
+  if (order.length > EIP712_MAX_TYPES) {
+    throw new TLVTooBigError(
+      `serializeTypedDataTLV: ${order.length} types > EIP712_MAX_TYPES=${EIP712_MAX_TYPES}`,
+    );
+  }
+  if (order[0] !== "EIP712Domain") {
+    throw new Error("serializeTypedDataTLV: internal — EIP712Domain not at index 0");
+  }
+  const primaryIdx = order.indexOf(td.primaryType);
+  if (primaryIdx < 0) {
+    throw new Error(`serializeTypedDataTLV: primaryType ${td.primaryType} not in order`);
+  }
+
+  const parts: Uint8Array[] = [];
+  const pushU8 = (v: number) => parts.push(new Uint8Array([v & 0xff]));
+  const pushU32BE = (v: number) => {
+    const b = new Uint8Array(4);
+    b[0] = (v >>> 24) & 0xff;
+    b[1] = (v >>> 16) & 0xff;
+    b[2] = (v >>> 8) & 0xff;
+    b[3] = v & 0xff;
+    parts.push(b);
+  };
+  const pushBoundedAscii = (s: string, maxLen: number, label: string) => {
+    const u = utf8ToBytes(s);
+    if (u.length === 0) {
+      throw new Error(`serializeTypedDataTLV: empty ${label}`);
+    }
+    if (u.length > maxLen) {
+      throw new TLVTooBigError(
+        `serializeTypedDataTLV: ${label} "${s}" length ${u.length} > ${maxLen}`,
+      );
+    }
+    pushU8(u.length);
+    parts.push(u);
+  };
+
+  // ---- type table ----
+  pushU8(order.length);
+  for (const typeName of order) {
+    pushBoundedAscii(typeName, EIP712_MAX_NAME_LEN, "type name");
+    const fields = td.types[typeName];
+    if (fields.length === 0 || fields.length > EIP712_MAX_FIELDS_PER_TYPE) {
+      throw new TLVTooBigError(
+        `serializeTypedDataTLV: type ${typeName} has ${fields.length} fields (cap ${EIP712_MAX_FIELDS_PER_TYPE})`,
+      );
+    }
+    pushU8(fields.length);
+    for (const f of fields) {
+      pushBoundedAscii(f.name, EIP712_MAX_NAME_LEN, `field name in ${typeName}`);
+      pushBoundedAscii(f.type, EIP712_MAX_TYPE_LEN, `field type in ${typeName}`);
+    }
+  }
+
+  // ---- primary type index ----
+  pushU8(primaryIdx);
+
+  // ---- value sections ----
+  function writeStructValues(typeName: string, obj: any) {
+    const fields = td.types[typeName];
+    for (const f of fields) {
+      writeValue(f.type, obj?.[f.name], typeName, f.name);
+    }
+  }
+
+  function writeValue(typeStr: string, v: any, parentType: string, fieldName: string) {
+    // Arrays: prefix 4B count + items. The on-device parser will tag
+    // the whole tree as UNSUPPORTED in v0.2 but still consumes the
+    // bytes so the framing stays valid (and a future v0.3 parser can
+    // pick it up without protocol changes).
+    if (typeStr.endsWith("]")) {
+      const inner = typeStr.substring(0, typeStr.lastIndexOf("["));
+      if (!Array.isArray(v)) {
+        throw new Error(`array field ${parentType}.${fieldName} is not an array`);
+      }
+      pushU32BE(v.length);
+      for (const item of v) writeValue(inner, item, parentType, fieldName);
+      return;
+    }
+    // Nested struct: recurse with no extra framing — fields are written
+    // back-to-back per declaration order, just like the parser reads.
+    if (td.types[typeStr]) {
+      writeStructValues(typeStr, v);
+      return;
+    }
+    // string
+    if (typeStr === "string") {
+      const u = utf8ToBytes(String(v ?? ""));
+      if (u.length > EIP712_MAX_STRING_LEN) {
+        throw new TLVTooBigError(
+          `serializeTypedDataTLV: string ${parentType}.${fieldName} length ${u.length} > ${EIP712_MAX_STRING_LEN}`,
+        );
+      }
+      pushU32BE(u.length);
+      parts.push(u);
+      return;
+    }
+    // dynamic bytes
+    if (typeStr === "bytes") {
+      const u = typeof v === "string" ? hexToBytes(v) : (v as Uint8Array);
+      if (u.length > EIP712_MAX_STRING_LEN) {
+        throw new TLVTooBigError(
+          `serializeTypedDataTLV: bytes ${parentType}.${fieldName} length ${u.length} > ${EIP712_MAX_STRING_LEN}`,
+        );
+      }
+      pushU32BE(u.length);
+      parts.push(u);
+      return;
+    }
+    if (typeStr === "address") {
+      const u = hexToBytes(String(v));
+      if (u.length !== 20) {
+        throw new Error(`address ${parentType}.${fieldName} expects 20 bytes, got ${u.length}`);
+      }
+      parts.push(u);
+      return;
+    }
+    if (typeStr === "bool") {
+      pushU8(v ? 1 : 0);
+      return;
+    }
+    if (typeStr.startsWith("uint")) {
+      const bits = parseUintBits(typeStr.substring(4));
+      const N = bits / 8;
+      parts.push(uintToBigEndian(v, N));
+      return;
+    }
+    if (typeStr.startsWith("int")) {
+      const bits = parseUintBits(typeStr.substring(3));
+      const N = bits / 8;
+      parts.push(intToBigEndian(v, N));
+      return;
+    }
+    if (typeStr.startsWith("bytes")) {
+      const N = parseInt(typeStr.substring(5), 10);
+      if (isNaN(N) || N < 1 || N > 32) {
+        throw new Error(`bad bytesN type ${typeStr}`);
+      }
+      const u = typeof v === "string" ? hexToBytes(v) : (v as Uint8Array);
+      if (u.length !== N) {
+        throw new Error(`${typeStr} field ${parentType}.${fieldName} expects ${N} bytes, got ${u.length}`);
+      }
+      parts.push(u);
+      return;
+    }
+    throw new Error(`unsupported EIP-712 type "${typeStr}" at ${parentType}.${fieldName}`);
+  }
+
+  writeStructValues("EIP712Domain", td.domain);
+  writeStructValues(td.primaryType, td.message);
+  return concatBytes(...parts);
+}
+
+function parseUintBits(suffix: string): number {
+  const bits = suffix === "" ? 256 : parseInt(suffix, 10);
+  if (isNaN(bits) || bits < 8 || bits > 256 || bits % 8 !== 0) {
+    throw new Error(`bad uint/int width "${suffix}"`);
+  }
+  return bits;
+}
+
+function uintToBigEndian(v: any, N: number): Uint8Array {
+  let n: bigint;
+  if (typeof v === "bigint") n = v;
+  else if (typeof v === "number") n = BigInt(v);
+  else if (typeof v === "string") n = BigInt(v);
+  else throw new Error(`uint requires bigint/number/string, got ${typeof v}`);
+  if (n < 0n) throw new Error(`uint cannot be negative`);
+  const max = 1n << BigInt(N * 8);
+  if (n >= max) throw new Error(`uint${N * 8} overflow`);
+  const out = new Uint8Array(N);
+  for (let i = N - 1; i >= 0 && n > 0n; i--) {
+    out[i] = Number(n & 0xffn);
+    n >>= 8n;
+  }
+  return out;
+}
+
+function intToBigEndian(v: any, N: number): Uint8Array {
+  let n: bigint;
+  if (typeof v === "bigint") n = v;
+  else if (typeof v === "number") n = BigInt(v);
+  else if (typeof v === "string") n = BigInt(v);
+  else throw new Error(`int requires bigint/number/string, got ${typeof v}`);
+  // Two's complement N-byte encoding.
+  const mask = (1n << BigInt(N * 8)) - 1n;
+  const u = n & mask;
+  return uintToBigEndian(u, N);
 }
 
 // ============================================================================

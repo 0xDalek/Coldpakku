@@ -515,25 +515,40 @@ async function opTypedData(
   domainSep: Uint8Array,
   messageHash: Uint8Array,
   humanText: Uint8Array,
+  treeBytes: Uint8Array,
 ): Promise<Uint8Array | null> {
   const s = requireSession();
   if (domainSep.length !== 32 || messageHash.length !== 32) {
     throw new Error("domainSep and messageHash must be 32 bytes");
   }
+  if (treeBytes.length > 0xffff) {
+    // Wire field is 2B BE; the higher PROTO_TYPED_TREE_MAX = 8192 cap is
+    // enforced in sign.ts but we belt-and-braces this here too.
+    throw new Error(`typed-data tree (${treeBytes.length} B) exceeds 2-byte length field`);
+  }
   await waitFirstReady(s);
   await s.write(new Uint8Array([PROTO_ACK]));
   await sleep(50);
+  // head: opcode + ds + mh + text_len (4B BE)
   const head = new Uint8Array(1 + 32 + 32 + 4);
   head[0] = PROTO_TYPED_DATA;
   head.set(domainSep, 1);
   head.set(messageHash, 1 + 32);
-  const len = humanText.length;
-  head[1 + 64 + 0] = (len >>> 24) & 0xff;
-  head[1 + 64 + 1] = (len >>> 16) & 0xff;
-  head[1 + 64 + 2] = (len >>> 8) & 0xff;
-  head[1 + 64 + 3] = len & 0xff;
+  const tlen = humanText.length;
+  head[1 + 64 + 0] = (tlen >>> 24) & 0xff;
+  head[1 + 64 + 1] = (tlen >>> 16) & 0xff;
+  head[1 + 64 + 2] = (tlen >>> 8) & 0xff;
+  head[1 + 64 + 3] = tlen & 0xff;
   await s.write(head);
   await s.write(humanText);
+  // v7 tail: 2B BE tree_len + tree (may be zero-length for blind-only mode).
+  const tail = new Uint8Array(2);
+  tail[0] = (treeBytes.length >>> 8) & 0xff;
+  tail[1] = treeBytes.length & 0xff;
+  await s.write(tail);
+  if (treeBytes.length > 0) {
+    await s.write(treeBytes);
+  }
   const marker = await drainUntil(s, [PROTO_SIGSTART, PROTO_CANCEL]);
   if (marker === PROTO_CANCEL) {
     await s.read(1, STREAM_TIMEOUT_MS);
@@ -661,7 +676,12 @@ chrome.runtime.onMessage.addListener((msg: SbMsg, _sender, sendResponse) => {
           const domainSep = hexToBytes(String(msg.domainSepHex));
           const messageHash = hexToBytes(String(msg.messageHashHex));
           const humanText = hexToBytes(String(msg.humanTextHex));
-          const sig = await withLock(() => opTypedData(domainSep, messageHash, humanText));
+          const treeBytes = msg.treeBytesHex
+            ? hexToBytes(String(msg.treeBytesHex))
+            : new Uint8Array(0);
+          const sig = await withLock(() =>
+            opTypedData(domainSep, messageHash, humanText, treeBytes),
+          );
           sendResponse({ ok: true, sigHex: sig ? bytesToHex(sig) : null });
           break;
         }

@@ -20,6 +20,7 @@
 #include "crypto/ethereum.h"
 #include "crypto/eth_tx.h"
 #include "crypto/keccak256.h"
+#include "crypto/eip712.h"
 #include "crypto/uecc_rng.h"
 #include "storage/session.h"
 #include "storage/policy.h"
@@ -484,10 +485,17 @@ static void run_boot_self_test(void) {
  * touch the IWRAM stack. We reuse g_rlp_buf as a general buffer: opcodes
  * are processed one at a time so there's no overlap. For typed_data we
  * have dedicated buffers (the hashes are small but the text can grow up
- * to 4 KB). */
-static u8 g_rlp_buf[PROTO_TX_RLP_MAX];
-static u8 g_typed_text_buf[PROTO_TYPED_TEXT_MAX];
-static u8 g_meta_buf[PROTO_TX_META_MAX];
+ * to 4 KB, and v7 also adds the TLV tree + decoded tree table). */
+#include <gba_base.h>   /* EWRAM_BSS attribute for big workspaces */
+static EWRAM_BSS u8 g_rlp_buf[PROTO_TX_RLP_MAX];
+static EWRAM_BSS u8 g_typed_text_buf[PROTO_TYPED_TEXT_MAX];
+static EWRAM_BSS u8 g_meta_buf[PROTO_TX_META_MAX];
+
+/* v7: receive buffer for the EIP-712 TLV tree (up to 8 KB) plus the
+ * decoded type table (~6.4 KB). Both live in EWRAM — IWRAM is reserved
+ * for the working stack and small hot caches. */
+static EWRAM_BSS u8 g_typed_tree_buf[PROTO_TYPED_TREE_MAX];
+static EWRAM_BSS eip712_tree_t g_eip712_tree;
 
 /* Cooperatively waits for the host to send PROTO_TXRESULT and shows the
  * result screen. If the host sends nothing in ~30s or the user presses
@@ -862,7 +870,50 @@ static void handle_typed_data(void) {
         return;
     }
 
-    if (confirm_typed_data((const char*)g_typed_text_buf, tlen, ds, mh)) {
+    /* v7: optional TLV tree of the typed data so the cartridge can
+     * verify the hashes on-device when the user presses L+R. tree_len=0
+     * keeps the legacy blind-only flow. The recv helper accepts len=0. */
+    u32 tree_len = 0;
+    if (!protocol_recv_lenprefixed_2b(g_typed_tree_buf, sizeof(g_typed_tree_buf),
+                                      PROTO_TYPED_TREE_MAX, &tree_len)) {
+        protocol_send_cancel();
+        protocol_send_done();
+        return;
+    }
+
+    /* Decode the tree (if any) and recompute domainSeparator +
+     * messageHash to compare against the host's. The result drives the
+     * confirm screen's parsed-view + MISMATCH flow. */
+    eip712_status_t parse_status = EIP712_ERR_MALFORMED;
+    const eip712_tree_t* tree_ptr = NULL;
+    if (tree_len > 0) {
+        parse_status = eip712_parse_and_verify(g_typed_tree_buf, tree_len,
+                                               ds, mh, &g_eip712_tree);
+        if (parse_status == EIP712_OK_MATCH || parse_status == EIP712_OK_MISMATCH) {
+            tree_ptr = &g_eip712_tree;
+        }
+        /* For ERR_* we silently downgrade to blind-only mode. The user
+         * still sees the host-supplied hashes + pretty text and decides
+         * whether to trust the host. */
+    }
+
+    /* v7 chain-lock for typed data: if we successfully decoded a tree
+     * AND its EIP712Domain carries a chainId AND that chainId differs
+     * from the one this cartridge is locked to, reject the same way as
+     * tx_rlp does (REJECT_CHAIN + WRONG CHAIN screen). Tree-less and
+     * chainId-less typed data fall through (no enforcement possible). */
+    if (tree_ptr && tree_ptr->has_chain_id) {
+        const chain_info* active = chains_at(g_active_chain_idx);
+        if (active && tree_ptr->domain_chain_id != (u32)active->chain_id) {
+            render_wrong_chain_screen(active, (u64)tree_ptr->domain_chain_id);
+            protocol_send_reject_chain(active->chain_id, tree_ptr->domain_chain_id);
+            protocol_send_done();
+            return;
+        }
+    }
+
+    if (confirm_typed_data((const char*)g_typed_text_buf, tlen, ds, mh,
+                           tree_ptr, parse_status)) {
         /* EIP-712: hash = keccak256(0x19 || 0x01 || domainSeparator || messageHash) */
         u8 buf[66];
         buf[0] = 0x19;

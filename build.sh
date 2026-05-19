@@ -85,6 +85,7 @@ SOURCES_C=(
     src/crypto/rlp.c
     src/crypto/eth_tx.c
     src/crypto/eth_abi.c
+    src/crypto/eip712.c
     src/crypto/uecc_rng.c
     src/crypto/chacha20.c
     src/storage/sram.c

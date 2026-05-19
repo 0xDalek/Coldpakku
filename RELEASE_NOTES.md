@@ -86,18 +86,40 @@ addresses are hard-coded in ROM.
 precomputed hash from the host. A compromised browser cannot redirect
 the signature to a different message.
 
-### EIP-712 with manual verification
+### EIP-712 with on-device verification (v0.2 / wire v7)
 
-For `eth_signTypedData_v4` the GBA receives the precomputed
-`domainSeparator` / `messageHash` from the extension (a native parser is
-on the roadmap). To make this safer, the GBA displays:
+For `eth_signTypedData_v4` the host always sends the precomputed
+`domainSeparator` and `messageHash` plus a pretty-printed text *and* an
+optional TLV serialization of the typed data (see
+[docs/PROTOCOL.md](docs/PROTOCOL.md#typed_data-payload-v7)). New in v0.2:
 
-1. The human-readable, pretty-printed structure that the host claims it
-   built the hashes from (domain name, version, chainId, message).
-2. The first / last bytes of both hashes for manual verification against
-   the dApp.
+1. **Parsed view is the default** whenever the cartridge could re-derive
+   the hashes on-device. The user sees, without doing anything,
+   `[TYPED DATA OK][PARSE]` with `<primaryType> chain:<id>`, a
+   `hash MATCH` banner, and every field of `Domain` + the primary
+   message in a flat, indented list (struct-aware up to depth 4).
+2. **Hold `L+R`** to toggle to the legacy blind view (text + truncated
+   hex hashes). Useful to eyeball the raw `domainSeparator` /
+   `messageHash` against a trusted source if you want.
+3. If the parser detects that the host's hashes do not match what the
+   typed data hashes to (a tampered host), the confirm screen turns
+   into a **HOST HASH MISMATCH** warning and signing is **blocked** —
+   only cancel is honoured.
+4. If `EIP712Domain.chainId` is present and does not match the
+   cartridge's chain lock, the signature is rejected the same way as
+   an off-chain tx (`PROTO_REJECT_CHAIN` + `WRONG CHAIN` screen),
+   *before* the confirm screen is shown.
+5. The parser detects the "infinite approval" sentinel (`uint*` value
+   all-ones for ≥128 bits) and shows `MAX (infinite)` instead of the
+   raw hex. Covers ERC-20 `approve(uint256 max)` and Permit2
+   `PermitDetails.amount = uint160 max` as used by Uniswap.
 
-If the host lied about the human text, the hashes don't match.
+Supported type subset (v0.2, matches Ledger's clear-signing without
+plugins): atomic types (`address`, `bool`, `uint*`, `int*`, `bytes1..32`),
+dynamic types (`string`, `bytes`), and nested structs up to depth 4.
+Arrays (`T[]`, `T[N]`) cause the parser to refuse the parsed view; the
+user gets the blind view directly (text + hex hashes) and can still
+sign with `A`. The statusbar will not advertise `L+R` in that case.
 
 ### Browser extension (Manifest V3, ~5 300 LOC)
 
@@ -154,9 +176,6 @@ If the host lied about the human text, the hashes don't match.
 
 ## Known limitations
 
-- **No native EIP-712 parser on the GBA** — today the cartridge
-  blind-signs the hashes computed by the host. The pretty-printed text
-  and the manual hash comparison are the mitigations.
 - **No firmware integrity check beyond the gbafix header CRC** — a
   modified cartridge could ship an "export_seed" opcode. Build from
   source and verify the resulting `gba-signer.gba` SHA-256 matches the
@@ -171,6 +190,10 @@ If the host lied about the human text, the hashes don't match.
   (drag-and-drop UF2) and then copy `main.py`. See the Pico quickstart.
 - **EIP-2930 (access list type 1) not implemented** — EIP-1559 (type 2)
   and legacy work.
+- **EIP-712 arrays not supported by the on-device parser yet** —
+  Permit2 `PermitBatch` and OpenSea Seaport orders fall back to blind
+  signing of the host-supplied hashes (with the legacy warning).
+  Atomic types, strings, dynamic bytes and nested structs are covered.
 - **Single account** — derivation path is fixed to `m/44'/60'/0'/0/0`.
 - **BIP-39 passphrase ("25th word") not exposed in the UI.**
 - **PIN attempt counter is per-session**, not persisted across boots.
@@ -179,9 +202,9 @@ If the host lied about the human text, the hashes don't match.
 
 Short list of what comes next, roughly in priority order:
 
-1. **Native EIP-712 parser on the GBA** so the cartridge stops trusting
-   precomputed hashes for typed data — the largest remaining trust
-   vector.
+1. **EIP-712 array support** in the on-device parser so Permit2
+   `PermitBatch` and Seaport orders can also be verified on-device
+   instead of falling back to blind sign.
 2. **Real-hardware testing on Ethereum mainnet** (only Polygon mainnet
    and Sepolia tested so far).
 3. **Signed firmware** — show a SHA-256 of the running ROM at boot so

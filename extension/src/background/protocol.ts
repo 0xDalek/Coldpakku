@@ -45,6 +45,10 @@ export const PROTO_TX_META_MAX = 256;
 export const PROTO_TX_RLP_MAX        = 4096;
 export const PROTO_PERSONAL_MSG_MAX  = 4096;
 export const PROTO_TYPED_TEXT_MAX    = 4096;
+// v7: optional EIP-712 TLV tree appended to PROTO_TYPED_DATA so the GBA
+// can verify the hashes on-device when the user requests it (L+R combo).
+// tree_len = 0 keeps the legacy blind-only flow.
+export const PROTO_TYPED_TREE_MAX    = 8192;
 
 export const TXRESULT_BROADCAST_OK   = 0x00;
 export const TXRESULT_BROADCAST_ERR  = 0x01;
