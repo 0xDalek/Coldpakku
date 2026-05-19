@@ -1,4 +1,4 @@
-# Contributing to GBA Signer
+# Contributing to Coldpakku
 
 Thanks for your interest. This project is an experimental Ethereum
 hardware wallet running on a Game Boy Advance, and it benefits a lot
@@ -37,10 +37,9 @@ people. That is the whole policy.
 
 ## Building
 
-The build instructions live in the [README's "Build from source"
-section](README.md#build-from-source-developers-only). They cover the
-ROM (`devkitARM`), the browser extension (`npm`), and the Pico bridge
-firmware.
+The full build instructions live in [`docs/BUILDING.md`](docs/BUILDING.md).
+They cover the ROM (`devkitARM`), the browser extension (`npm`), the
+Pico bridge firmware, and the test suite.
 
 If your change does not touch the firmware, you do not need
 `devkitARM` installed — `npm` (for the extension) or Python 3.10+ (for
@@ -88,11 +87,13 @@ host tools) is enough.
 There is no full CI yet; please run the relevant tests locally before
 opening a PR.
 
-- **Firmware changes** → run `tests/algorithm_verify.py` (the
-  `tests/` directory is gitignored because it contains a literal test
-  mnemonic; the README explains how to regenerate it on your machine).
-  For protocol or signing changes, also run `pc/test_signing_v4.py`
-  against an mGBA instance with `-l 0.0.0.0:12345`.
+- **Firmware changes** → run `python3 tests/algorithm_verify.py`
+  (BIP39/BIP32 parity vs `eth_account` using the standard Trezor
+  vector `abandon×11 about`) and `python3 tests/host_test.py`
+  (compiles the crypto `.c` files with native gcc and validates them
+  against RFC 4231 / 8439 / BIP39 / BIP32 vectors). For protocol or
+  signing changes, also run `pc/test_signing_v4.py` against an mGBA
+  instance with `-l 0.0.0.0:12345`.
 - **Extension changes** → `npm run typecheck` in `extension/`. For UI
   or flow changes, do a manual end-to-end test against a real or fake
   GBA.

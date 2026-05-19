@@ -1,4 +1,4 @@
-# GBA Signer browser extension
+# Coldpakku browser extension
 
 Chromium-based extension (Manifest V3) that turns a Game Boy Advance into
 an Ethereum hardware wallet for any web dApp. Announces itself via
@@ -120,7 +120,7 @@ npm run build      # outputs dist/
 7. Click the extension icon in Chrome, hit **Connect GBA**, authorize
    the USB-CDC port (it appears as Raspberry Pi Pico, VID 0x2E8A).
 8. Visit any dApp that supports EIP-6963 (Uniswap, Aave, OpenSea
-   modern, …) and pick **GBA Signer** in its wallet picker.
+   modern, …) and pick **Coldpakku** in its wallet picker.
 
 ## Security notes
 

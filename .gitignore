@@ -15,9 +15,6 @@ build/
 __pycache__/
 *.pyc
 
-# BIP-39 test vectors with literal mnemonic
-tests/
-
 # local tooling / IDE / agents
 .cursor/
 mcps/
@@ -25,6 +22,7 @@ mcps/
 # extension build output + node_modules
 extension/node_modules/
 extension/dist/
+extension/vite.config.ts.timestamp-*.mjs
 
 # release artifacts produced by scripts/build_release.sh
 releases/*.gba
