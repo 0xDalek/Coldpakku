@@ -37,10 +37,10 @@ import micropython
 from machine import UART, Pin
 
 # === 2-second rescue window (Ctrl-C still kills the script) ==============
-print("gba-signer bridge: rescue window 2s (press Ctrl-C in REPL to abort)")
+print("coldpakku bridge: rescue window 2s (press Ctrl-C in REPL to abort)")
 for i in range(20):
     time.sleep_ms(100)
-print("gba-signer bridge: starting bridge mode")
+print("coldpakku bridge: starting bridge mode")
 
 # === Real bridge =========================================================
 # CRITICAL: now disable the Ctrl-C interceptor on stdin. Without this any

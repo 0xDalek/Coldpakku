@@ -4,14 +4,14 @@
 //     content_scripts)
 //   - the service-worker (which has access to chrome.* and WebSerial)
 //
-// injected<->content uses window.postMessage on a "gba-signer:*"
+// injected<->content uses window.postMessage on a "coldpakku:*"
 // namespaced channel. content<->SW uses chrome.runtime.
 
 export {};
 
-const NS_REQ = "gba-signer:request";
-const NS_RES = "gba-signer:response";
-const NS_EVT = "gba-signer:event";
+const NS_REQ = "coldpakku:request";
+const NS_RES = "coldpakku:response";
+const NS_EVT = "coldpakku:event";
 
 // Forward requests injected -> SW
 window.addEventListener("message", (ev: MessageEvent) => {

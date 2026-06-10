@@ -4,7 +4,7 @@ Repository layout. Each module is small and self-contained; if you want to
 understand the cartridge boot path, read `src/main.c` → `src/state.c`.
 
 ```
-gba-signer/
+coldpakku/
 ├── build.sh                 # build without Make (alternative to Makefile)
 ├── Makefile                 # build with devkitPro Makefile (preferred)
 ├── src/
@@ -33,7 +33,10 @@ gba-signer/
 │   │   ├── ethereum.c       # priv → address + RFC 6979 sig + EIP-55
 │   │   ├── rlp.c            # zero-copy RLP decoder (Yellow Paper App. B)
 │   │   ├── eth_tx.c         # legacy + EIP-1559 tx decoder + signing hash
-│   │   ├── eth_abi.c        # ERC-20/NFT selectors decoder (transfer/approve…)
+│   │   ├── eth_abi.c        # ERC-20/NFT selectors decoder (transfer/approve…) — legacy ad-hoc
+│   │   ├── abi_selectors.c  # 25-entry ABI selector table (v0.3 generic decoder)
+│   │   ├── abi_decoder.c    # head/tail ABI decoder over abi_selectors table
+│   │   ├── eip712.c         # on-device EIP-712 hashStruct (re-derives the host's hashes)
 │   │   ├── uecc_rng.c       # RNG registration for micro-ecc
 │   │   └── ../bip39_wordlist.h  # embedded BIP39 wordlist in ROM (16 KB)
 │   ├── storage/
@@ -67,7 +70,9 @@ gba-signer/
 │   ├── algorithm_verify.py  # BIP39/BIP32/ETH derivation parity vs eth_account
 │   ├── host_test.py         # compile crypto .c with native gcc + ctypes vs RFC vectors
 │   ├── test_rlp_parity.py   # 100 random txs: our RLP hash == eth_account hash
-│   ├── test_eth_abi.py      # ABI selector decoder vectors (good + malformed)
+│   ├── test_eth_abi.py      # legacy ABI selector decoder vectors (eth_abi.c)
+│   ├── test_abi_decoder.py  # v0.3 generic ABI decoder via gcc + ctypes (vectors vs eth_abi)
+│   ├── abi_decoder_oracle.py# Python re-impl of abi_decoder.c (gcc-independent spec check)
 │   └── golden_values.json   # snapshot from algorithm_verify (abandon×11 about)
 ├── docs/
 │   ├── ARCHITECTURE.md           # this file
@@ -142,3 +147,28 @@ and unsupported types make the parser silently fall back to the blind
 view — no toggle, host hashes only, with a clear "trust the host"
 warning. See the [protocol spec](PROTOCOL.md#typed_data-payload-v7) for
 the wire layout.
+
+`eth_sendTransaction` calldata follows the same pattern in v0.3 (without
+needing a wire change): the firmware carries a 25-entry table of well
+known function selectors in `src/crypto/abi_selectors.c`, and
+`src/crypto/abi_decoder.c` walks the ABI head/tail layout to produce a
+flat list of `(name, decoded value)` pairs that `src/ui/confirm.c`
+renders on the parsed page. Two specialty paths run in parallel:
+
+1. The legacy `eth_abi.c` (v0.1) still drives the dedicated pretty
+   pages for `transfer`/`approve`/`transferFrom`/`safeTransferFrom`/
+   `setApprovalForAll`/`deposit`/`withdraw` so the v0.2 UX with
+   "INFINITE APPROVAL" / "ALL NFTS APPROVED" warnings is untouched.
+2. The new generic `abi_decoder.c` (v0.3) takes over for the ~18 new
+   selectors the legacy decoder did not cover (Uniswap V2 router fns,
+   ERC-2612 permit, multicall, Universal Router execute, …), with a
+   common flat-indented rendering. Wrapper functions are decoded
+   top-level only: the inner `bytes` / `bytes[]` payload is shown as
+   `N sub-cmd` without descending into it, deferring per-protocol
+   sub-decoding to a v0.4 plugin system.
+
+If neither decoder recognises the selector, the confirm screen falls
+back to the legacy hex view — same behaviour as v0.2 for unknown
+calldata. The protocol does not change in v0.3 (still wire v7): the
+host sends the same RLP-encoded unsigned tx and the GBA decodes the
+calldata it already had to parse anyway to compute the signing hash.

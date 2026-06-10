@@ -130,7 +130,7 @@ most 4 KB per tx, so you shouldn't notice).
 
 ## End-to-end test
 
-Once everything is connected and the `gba-signer.gba` ROM is running on
+Once everything is connected and the `coldpakku.gba` ROM is running on
 the GBA:
 
 ```bash

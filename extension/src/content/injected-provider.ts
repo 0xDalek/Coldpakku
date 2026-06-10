@@ -6,9 +6,9 @@
 
 export {};
 
-const NS_REQ = "gba-signer:request";
-const NS_RES = "gba-signer:response";
-const NS_EVT = "gba-signer:event";
+const NS_REQ = "coldpakku:request";
+const NS_RES = "coldpakku:response";
+const NS_EVT = "coldpakku:event";
 
 // Stable UUID for this provider (used in the EIP-6963 announce).
 const PROVIDER_UUID = "9b1e9a5d-3e49-4e1a-a8c6-44edc7c0d5b1";
@@ -101,7 +101,7 @@ const PROVIDER_INFO = {
   uuid: PROVIDER_UUID,
   name: "Coldpakku",
   icon: "data:image/svg+xml;base64," + btoa(svgIcon()),
-  rdns: "tools.gba-signer",
+  rdns: "tools.coldpakku",
 };
 
 function announce() {

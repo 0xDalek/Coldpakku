@@ -116,6 +116,29 @@ pretty text from "trust me, this is what those hashes mean" into "the
 cartridge verified it". That last bit closes the largest residual
 attack surface against a compromised browser extension or USB host.
 
+## `TX_RLP` / `TX_RLP_META` calldata decoding (v0.3, no wire change)
+
+The cartridge decodes the calldata bytes of `TX_RLP` and `TX_RLP_META`
+on-device against a hardcoded selector table embedded in the ROM
+(`src/crypto/abi_selectors.c`, ~25 entries: ERC-20, ERC-721, WETH,
+ERC-2612 Permit, Uniswap V2 router, multicall, Universal Router top
+level). When the first 4 bytes of `data` match a known selector and the
+remaining args use only the atomic ABI subset (`address`, `bool`,
+`uint*`, `int*`, `bytesN`, `bytes`, `string`, `address[]`), the
+confirm screen defaults to a parsed view (`function: approve  spender:
+0x… amount: MAX (infinite)`) instead of a hex dump. `L+R` toggles to
+the legacy hex view. Unknown selectors or arg types fall back
+transparently to hex.
+
+Wrappers (`multicall`, Universal Router `execute`) are decoded only at
+the top level — the user sees `commands: 3 sub-cmd, inputs: 3 sub-cmd,
+deadline: …`, but the inner `bytes` payload is not descended into in
+v0.3 (per-protocol sub-decoders are deferred to v0.4).
+
+The wire protocol does NOT change in v0.3: the host still sends the
+RLP-encoded unsigned tx exactly as in v0.2, and the GBA does the ABI
+decoding from the calldata bytes it already parses out of the RLP.
+
 ## Notes
 
 - `v=0xFE` is a sentinel: the host determines the real `recid` (0 or 1) by

@@ -3,7 +3,7 @@ receive the signature, validate it.
 
 Prerequisites:
   pip install -r requirements.txt
-  mgba -l 0.0.0.0:12345 gba-signer.gba   (run in another terminal)
+  mgba -l 0.0.0.0:12345 coldpakku.gba   (run in another terminal)
   On the GBA: finish mnemonic entry (or load a session) up to READY
 
 Run:

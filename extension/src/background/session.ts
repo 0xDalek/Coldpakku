@@ -43,7 +43,7 @@ const DEFAULT_STATE: PersistedState = {
   gbaPolicyTs: 0,
 };
 
-const KEY = "gba-signer-state";
+const KEY = "coldpakku-state";
 
 export async function loadState(): Promise<PersistedState> {
   const r = await chrome.storage.local.get(KEY);

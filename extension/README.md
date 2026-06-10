@@ -114,7 +114,7 @@ npm run build      # outputs dist/
 2. Open `chrome://extensions/`, enable **Developer mode** (top right).
 3. Click **Load unpacked** and select the `extension/dist/` folder.
 4. Flash the Pico bridge — see [`../docs/PICO_BRIDGE_QUICKSTART.md`](../docs/PICO_BRIDGE_QUICKSTART.md).
-5. Flash the GBA ROM — copy `../gba-signer.gba` to your flashcart (or
+5. Flash the GBA ROM — copy `../coldpakku.gba` to your flashcart (or
    run in mGBA).
 6. Boot the GBA, enter your PIN, plug the Pico via USB.
 7. Click the extension icon in Chrome, hit **Connect GBA**, authorize

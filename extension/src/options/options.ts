@@ -11,7 +11,7 @@
 import { DEFAULT_NETWORKS } from "../lib/networks";
 import type { NetworkInfo } from "../lib/types";
 
-const STORAGE_KEY = "gba-signer-state";
+const STORAGE_KEY = "coldpakku-state";
 
 interface PersistedState {
   rpcOverrides?: Record<string, string[]>;
@@ -259,7 +259,7 @@ function exportConfig(): void {
   });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "gba-signer-rpcs.json";
+  a.download = "coldpakku-rpcs.json";
   a.click();
   URL.revokeObjectURL(a.href);
 }

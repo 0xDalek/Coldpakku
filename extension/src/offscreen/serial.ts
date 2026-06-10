@@ -91,7 +91,7 @@ class GbaPortSession {
   }
 
   /** Reads and discards bytes until `settleMs` ms of silence. Used to
-   *  swallow the "gba-signer bridge: ..." messages that the Pico's
+   *  swallow the "coldpakku bridge: ..." messages that the Pico's
    *  MicroPython prints on stdout during boot, plus any READY bytes
    *  buffered before our handshake starts. Equivalent to the `_drain()`
    *  in pc/serial_transport.py. */
@@ -255,8 +255,8 @@ async function openSession(): Promise<void> {
 
   currentSession = new GbaPortSession(port);
 
-  // Drain MicroPython boot bytes ("gba-signer bridge: rescue window
-  // 2s ...", "gba-signer bridge: starting bridge mode") and any READY
+  // Drain MicroPython boot bytes ("coldpakku bridge: rescue window
+  // 2s ...", "coldpakku bridge: starting bridge mode") and any READY
   // pulses, so the next read starts "clean". Same behaviour as
   // pc/serial_transport.py._drain().
   try {

@@ -1,6 +1,6 @@
-# GBA Signer v0.1.0
+# Coldpakku v0.3.0
 
-First public release of GBA Signer, an Ethereum hardware wallet that runs
+Coldpakku is an Ethereum hardware wallet that runs
 on a Game Boy Advance. The GBA holds the 12-word BIP-39 seed in encrypted
 SRAM, parses transactions on-device, and approves them with a physical
 button press. A Raspberry Pi Pico bridges the GBA link cable to USB; a
@@ -10,9 +10,9 @@ Chromium extension exposes the wallet to any dApp via EIP-1193 + EIP-6963.
 
 | Artifact | Where it goes |
 |---|---|
-| `gba-signer-v0.1.0.gba`              | Copy to your flashcart's SD card (~205 KB). |
-| `gba-signer-pico-bridge-v0.1.0.zip`  | Unzip; follow the included `README.txt` (5 min). |
-| `gba-signer-extension-v0.1.0.zip`    | Unzip; load via `chrome://extensions/` → Developer mode → **Load unpacked**. |
+| `coldpakku-v0.3.0.gba`               | Copy to your flashcart's SD card (~205 KB). |
+| `coldpakku-pico-bridge-v0.3.0.zip`   | Unzip; follow the included `README.txt` (5 min). |
+| `coldpakku-extension-v0.3.0.zip`     | Unzip; load via `chrome://extensions/` → Developer mode → **Load unpacked**. |
 
 See the project [README](README.md) for the full first-use guide.
 
@@ -121,9 +121,52 @@ Arrays (`T[]`, `T[N]`) cause the parser to refuse the parsed view; the
 user gets the blind view directly (text + hex hashes) and can still
 sign with `A`. The statusbar will not advertise `L+R` in that case.
 
+### Native ABI calldata decoder (v0.3)
+
+`eth_sendTransaction` calldata is now decoded **on the cartridge**, not
+just shown as raw hex. The firmware carries a hardcoded selector table
+(`src/crypto/abi_selectors.c`, 25 entries) and a generic head/tail ABI
+walker (`src/crypto/abi_decoder.c`) that produces a flat, indented
+parsed view in the same style as the v0.2 EIP-712 parser. The wire
+protocol does NOT change — the GBA decodes from the RLP bytes it
+already parses for the signing hash, so a compromised host cannot
+mislabel a call.
+
+What's covered today:
+
+- **ERC-20**: `transfer`, `approve` (with `MAX (infinite)`),
+  `transferFrom`, `mint`, `burn`.
+- **ERC-721 / ERC-1155**: `safeTransferFrom` (with and without `bytes`
+  payload), `setApprovalForAll` (marked **drainer-grade**).
+- **WETH**: `deposit()` and `withdraw(uint256)`.
+- **ERC-2612 Permit**: `permit(...)`.
+- **Uniswap V2 router**: all six `swap*` variants (with `address[]`
+  path rendered as `N hops` + first three addresses), `addLiquidity*`,
+  `removeLiquidity*`.
+- **Wrappers**: `multicall(bytes[])`, `multicall(uint256,bytes[])`,
+  Universal Router `execute(bytes,bytes[],uint256)`,
+  `execute(bytes,bytes[])` — decoded **top-level only**: the user
+  sees `commands: N sub-cmd`, `inputs: N sub-cmds`, `deadline: ...`
+  without descending into the inner payload.
+- **Atomic ABI types**: `address`, `bool`, `uint8..256`, `int256`,
+  `bytes4`, `bytes32`, dynamic `bytes`, `string`, and `address[]`.
+
+What still falls back to the v0.2 hex view (transparent — no UX
+regression):
+
+- Unknown selectors (anything not in the 25-entry table).
+- Functions whose args use tuples or non-`address[]` dynamic arrays
+  (Uniswap V3 `exactInputSingle` and similar). v0.4 will add a
+  per-protocol plugin system to cover those.
+
+UX: if the selector is recognised, page 0 (header) gets a `data:
+<funcname>` hint plus an `R parsed >` status bar instead of
+`R data >`. Pressing `R` once shows the parsed page; pressing again
+walks through the legacy hex pages, exactly like v0.2.
+
 ### Browser extension (Manifest V3, ~5 300 LOC)
 
-- EIP-1193 + EIP-6963 provider published as **GBA Signer**.
+- EIP-1193 + EIP-6963 provider published as **Coldpakku**.
 - Full coverage of the methods Uniswap and similar modern dApps use:
   - EIP-2255 `wallet_requestPermissions` / `wallet_getPermissions` /
     `wallet_revokePermissions`
@@ -178,7 +221,7 @@ sign with `A`. The statusbar will not advertise `L+R` in that case.
 
 - **No firmware integrity check beyond the gbafix header CRC** — a
   modified cartridge could ship an "export_seed" opcode. Build from
-  source and verify the resulting `gba-signer.gba` SHA-256 matches the
+  source and verify the resulting `coldpakku.gba` SHA-256 matches the
   public release.
 - **No secure element** — the GBA has no MMU, NX, ASLR, or stack
   canaries. A memory-corruption bug in our parsers would be terminal.
@@ -194,14 +237,14 @@ sign with `A`. The statusbar will not advertise `L+R` in that case.
   Permit2 `PermitBatch` and OpenSea Seaport orders fall back to blind
   signing of the host-supplied hashes (with the legacy warning).
   Atomic types, strings, dynamic bytes and nested structs are covered.
-- **`eth_sendTransaction` calldata is blind-signed on-device** — the
-  cartridge shows `to`, `value`, `chainId`, `gas` and the raw calldata
-  hex, but does NOT decode ABI args. The "function: approve, spender:
-  …, amount: infinite" labels you see come from the browser extension
-  popup, which a compromised host could manipulate. v0.3 closes this
-  gap with a native ABI decoder for the ~30 most common selectors
-  (ERC-20, Permit, Uniswap V2/V3 swaps, multicall), mirroring what
-  v0.2 did for EIP-712.
+- **`eth_sendTransaction` selectors outside the v0.3 table are
+  blind-signed.** The 25-entry on-device table covers ERC-20,
+  ERC-721 `setApprovalForAll`, WETH, ERC-2612 Permit, Uniswap V2
+  router, multicall and Universal Router top-level. Functions whose
+  args use tuples (Uniswap V3 `exactInputSingle`, NFT marketplace
+  orders) or non-`address[]` dynamic arrays still fall back to the
+  hex view; the per-protocol plugin system in v0.4 will close that
+  gap.
 - **Single account** — derivation path is fixed to `m/44'/60'/0'/0/0`.
 - **BIP-39 passphrase ("25th word") not exposed in the UI.**
 - **PIN attempt counter is per-session**, not persisted across boots.
@@ -210,36 +253,30 @@ sign with `A`. The statusbar will not advertise `L+R` in that case.
 
 Short list of what comes next, roughly in priority order:
 
-1. **v0.3 — Native calldata decoder on the GBA.** Same idea as v0.2's
-   EIP-712 parser, applied to `eth_sendTransaction`. The cartridge
-   carries a hardcoded table of ~30 selectors (ERC-20, Permit, WETH,
-   Uniswap V2/V3 swaps, multicall…) and decodes the calldata args
-   on-device for atomic types (`address`, `uint*`, `int*`, `bytesN`,
-   `bool`, `string`, `bytes`). Parsed view by default; **L+R** toggles
-   to the raw hex. Unknown selectors fall back transparently to the
-   current hex view. Top-level decode for wrapper functions
-   (`execute`, `multicall`) without descending into their sub-payload.
-2. **v0.4 — Decoder plugin system for complex routers.** Per-protocol
+1. **v0.4 — Decoder plugin system for complex routers.** Per-protocol
    sub-decoders (Universal Router commands, 1inch swap descriptions,
    0x assembly batches, Curve / Balancer routers, LiFi bridges).
    Mirrors the Ledger Live plugin model: one plugin per dApp router.
-3. **EIP-712 array support** in the on-device parser so Permit2
+   Builds on the v0.3 generic ABI decoder by letting each plugin
+   describe what's inside the `bytes`/`bytes[]` blobs the wrapper
+   decoders currently render as `N sub-cmd`.
+2. **EIP-712 array support** in the on-device parser so Permit2
    `PermitBatch` and Seaport orders can also be verified on-device
    instead of falling back to blind sign.
-4. **Real-hardware testing on Ethereum mainnet** (only Polygon mainnet
+3. **Real-hardware testing on Ethereum mainnet** (only Polygon mainnet
    and Sepolia tested so far).
-5. **Signed firmware** — show a SHA-256 of the running ROM at boot so
+4. **Signed firmware** — show a SHA-256 of the running ROM at boot so
    the user can compare visually against the public release.
-6. **Native UF2 firmware for the Pico** so step 1 of the Pico
+5. **Native UF2 firmware for the Pico** so step 1 of the Pico
    quickstart becomes "drag this `.uf2`" — no MicroPython, no
    `mpremote`. Probably `pico-sdk` + `tinyusb` CDC.
-7. **Chrome Web Store listing**.
-8. **Multi-account** screen (`m/44'/60'/0'/0/N`) and optional BIP-39
+6. **Chrome Web Store listing**.
+7. **Multi-account** screen (`m/44'/60'/0'/0/N`) and optional BIP-39
    passphrase.
-9. **Persistent PIN failure counter** in SRAM (today the 3-strikes
+8. **Persistent PIN failure counter** in SRAM (today the 3-strikes
    counter is per-session).
-10. **Argon2id KDF** — strictly better than PBKDF2 against ASIC
-    attackers, but expensive on ARM7TDMI.
+9. **Argon2id KDF** — strictly better than PBKDF2 against ASIC
+   attackers, but expensive on ARM7TDMI.
 
 ## Build it yourself
 

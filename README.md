@@ -24,9 +24,9 @@ them from the [latest GitHub release](../../releases/latest):
 
 | File | Where it goes |
 |---|---|
-| `gba-signer-v0.1.0.gba`              | Copy to your flashcart's SD card (EZ-Flash, EverDrive, etc.) |
-| `gba-signer-pico-bridge-v0.1.0.zip`  | Unzip and follow [`docs/PICO_BRIDGE_QUICKSTART.md`](docs/PICO_BRIDGE_QUICKSTART.md) (5 min) |
-| `gba-signer-extension-v0.1.0.zip`    | Unzip, then `chrome://extensions/` → Developer mode → **Load unpacked** → pick the unzipped folder |
+| `coldpakku-v0.3.0.gba`               | Copy to your flashcart's SD card (EZ-Flash, EverDrive, etc.) |
+| `coldpakku-pico-bridge-v0.3.0.zip`   | Unzip and follow [`docs/PICO_BRIDGE_QUICKSTART.md`](docs/PICO_BRIDGE_QUICKSTART.md) (5 min) |
+| `coldpakku-extension-v0.3.0.zip`     | Unzip, then `chrome://extensions/` → Developer mode → **Load unpacked** → pick the unzipped folder |
 
 ### Hardware checklist
 
@@ -85,7 +85,7 @@ in `chrome.storage.local` and exports/imports as JSON.
 
 ```bash
 ./build.sh                                   # see docs/BUILDING.md
-mgba -l 0.0.0.0:12345 gba-signer.gba
+mgba -l 0.0.0.0:12345 coldpakku.gba
 
 # in another shell:
 python3 pc/test_e2e.py 0xYOUR_EXPECTED_ADDRESS 12345
@@ -158,9 +158,22 @@ on the confirm screen. A mismatch hard-blocks the signature. Hold
 **L+R** if you want to toggle back to the raw hex view. See
 [`docs/PROTOCOL.md`](docs/PROTOCOL.md#typed_data-payload-v7).
 
+`eth_sendTransaction` calldata is **decoded on-device** for ~25 known
+selectors (v0.3): ERC-20 (`transfer` / `approve`-with-`MAX` /
+`transferFrom` / `mint` / `burn`), ERC-721 / 1155
+(`setApprovalForAll`, `safeTransferFrom`), WETH `deposit`/`withdraw`,
+ERC-2612 `permit`, Uniswap V2 router (all `swap*`,
+`addLiquidity*`, `removeLiquidity*`), `multicall(bytes[])`, and
+Universal Router `execute(...)` (top-level: `N sub-cmd` without
+descending into the inner payload). Unknown selectors and functions
+whose args use tuples or non-`address[]` arrays fall back transparently
+to the hex view. Press `R` from the confirm screen to walk into the
+parsed page when the cartridge recognises the selector.
+
 For known limitations (PIN visible on screen, EIP-712 arrays still
-blind-signed today, no secure element) and the roadmap to address them,
-see [`RELEASE_NOTES.md`](RELEASE_NOTES.md).
+blind-signed today, calldata for unknown selectors still falls back to
+hex, no secure element) and the roadmap to address them, see
+[`RELEASE_NOTES.md`](RELEASE_NOTES.md).
 
 ### Reporting a vulnerability
 

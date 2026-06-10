@@ -4,8 +4,8 @@
  *
  * Used only when building as a shared library for tests/host_test.py.
  */
-#ifndef GBA_SIGNER_SHIM_HOST_H
-#define GBA_SIGNER_SHIM_HOST_H
+#ifndef COLDPAKKU_SHIM_HOST_H
+#define COLDPAKKU_SHIM_HOST_H
 
 #include <stdint.h>
 

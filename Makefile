@@ -1,5 +1,5 @@
 #---------------------------------------------------------------------------------
-# GBA Signer — Ethereum hardware wallet for the Game Boy Advance
+# Coldpakku — Ethereum hardware wallet for the Game Boy Advance
 #
 # Based on the devkitARM + libgba template. Requires:
 #   - DEVKITARM and DEVKITPRO in the environment (pacman package gba-dev)
@@ -12,7 +12,7 @@ endif
 include $(DEVKITARM)/gba_rules
 
 #---------------------------------------------------------------------------------
-TARGET   := gba-signer
+TARGET   := coldpakku
 BUILD    := build
 SOURCES  := src \
             src/ui \
@@ -32,7 +32,7 @@ INCLUDES := src \
 #---------------------------------------------------------------------------------
 # ROM header + flags
 #---------------------------------------------------------------------------------
-ROM_TITLE := GBA SIGNER
+ROM_TITLE := COLDPAKKU
 ROM_CODE  := GSIE
 GAME_TITLE := -DGAME_TITLE='"$(ROM_TITLE)"'
 

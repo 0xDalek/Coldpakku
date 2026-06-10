@@ -6,7 +6,7 @@ writes the Nintendo logo at 0x04..0xA0, fills the header with the
 title / code / fixed-0x96 byte, and computes the complement check (0xBD).
 
 Usage:
-    python3 tools/gbafix.py gba-signer.gba [-t TITLE] [-c CODE] [-m MAKER]
+    python3 tools/gbafix.py coldpakku.gba [-t TITLE] [-c CODE] [-m MAKER]
 
 Without this, the ROM gets stuck on the Nintendo logo screen when booting
 on real hardware (emulators such as mGBA usually skip the check).
@@ -103,7 +103,7 @@ def verify_header(rom: bytes) -> bool:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Patch a GBA ROM header (drop-in gbafix replacement)")
     ap.add_argument("rom", type=Path)
-    ap.add_argument("-t", "--title", default="GBA_SIGNER", help="game title (max 12 chars)")
+    ap.add_argument("-t", "--title", default="COLDPAKKU", help="game title (max 12 chars)")
     ap.add_argument("-c", "--code", default="GSIE", help="4-char game code")
     ap.add_argument("-m", "--maker", default="00", help="2-char maker code")
     ap.add_argument("-v", "--version", type=int, default=0, help="software version (0-255)")

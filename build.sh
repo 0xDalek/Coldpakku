@@ -16,7 +16,7 @@ PATH="$DEVKITARM/bin:$PATH"
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 BUILD="$ROOT/build"
-TARGET="gba-signer"
+TARGET="coldpakku"
 mkdir -p "$BUILD"
 
 LIBGBA="$DEVKITPRO/libgba"
@@ -85,6 +85,8 @@ SOURCES_C=(
     src/crypto/rlp.c
     src/crypto/eth_tx.c
     src/crypto/eth_abi.c
+    src/crypto/abi_selectors.c
+    src/crypto/abi_decoder.c
     src/crypto/eip712.c
     src/crypto/uecc_rng.c
     src/crypto/chacha20.c
@@ -137,13 +139,13 @@ echo "  objcopy $TARGET.gba"
 "$OBJCOPY" -O binary "$BUILD/$TARGET.elf" "$ROOT/$TARGET.gba"
 
 if command -v gbafix >/dev/null 2>&1; then
-    gbafix "$ROOT/$TARGET.gba" -tGBA_SIGNER -cGSIE -m00
+    gbafix "$ROOT/$TARGET.gba" -tCOLDPAKKU -cGSIE -m00
 elif [ -f "$ROOT/tools/gbafix.py" ]; then
     # Fallback: pure-Python implementation (prevents the ROM from getting
     # stuck on the Nintendo logo screen on real hardware when devkitPro
     # does not ship the `gbafix` tool on PATH).
     echo "  gbafix.py (devkitPro gbafix not found, using python fallback)"
-    python3 "$ROOT/tools/gbafix.py" "$ROOT/$TARGET.gba" -t GBA_SIGNER -c GSIE -m 00
+    python3 "$ROOT/tools/gbafix.py" "$ROOT/$TARGET.gba" -t COLDPAKKU -c GSIE -m 00
 else
     echo "WARNING: gbafix not available. The ROM will not boot on real hardware."
 fi

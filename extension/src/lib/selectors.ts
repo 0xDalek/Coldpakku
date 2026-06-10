@@ -1,8 +1,18 @@
-// Table of common selectors (first 4 bytes of calldata) so the popup
-// can show the user "what" the dApp is calling.
-// We don't decode the arguments (that would require a per-contract ABI),
-// but recognising the function name already gives the user A LOT of
-// context.
+// Table of common selectors (first 4 bytes of calldata) for the
+// popup's quick "what is the dApp calling?" hint.
+//
+// SINCE v0.3 THIS TABLE IS PURELY INFORMATIONAL FOR THE POPUP. The
+// authoritative selector table lives on-device at
+// `src/crypto/abi_selectors.c` and the GBA does its own ABI decoding,
+// so the popup cannot mislabel a "transfer()" as an "approve()" —
+// the firmware will catch a mismatch. The popup table is kept here
+// only so the user sees the function name BEFORE confirming on the
+// cartridge, and so the icon/colouring per call type works without
+// waiting on the serial roundtrip.
+//
+// The `firmwareDecoded` map below mirrors which selectors are also
+// recognised on-device (used by the popup to show a small
+// "decoded on cartridge" badge next to the function name).
 //
 // Selectors generated with keccak256(signature)[0:4] and verified via
 // 4byte.directory for the most common ones.
@@ -54,10 +64,40 @@ const KNOWN: Record<string, string> = {
   "0xd505accf": "permit(address,address,uint256,uint256,uint8,bytes32,bytes32)",
 };
 
+// Mirror of src/crypto/abi_selectors.c — selectors the GBA can also
+// decode on-device. Keep both lists in sync when adding selectors to
+// the firmware (otherwise the popup badge will lie).
+const FIRMWARE_DECODED: ReadonlySet<string> = new Set([
+  // ERC-20
+  "0xa9059cbb", "0x095ea7b3", "0x23b872dd", "0x40c10f19", "0x42966c68",
+  // ERC-721 / ERC-1155
+  "0x42842e0e", "0xb88d4fde", "0xa22cb465",
+  // WETH
+  "0xd0e30db0", "0x2e1a7d4d",
+  // ERC-2612 Permit
+  "0xd505accf",
+  // Uniswap V2 router
+  "0x7ff36ab5", "0x18cbafe5", "0x38ed1739", "0x4a25d94a",
+  "0xfb3bdb41", "0x8803dbee",
+  "0xf305d719", "0xe8e33700", "0xbaa2abde", "0x02751cec",
+  // multicall + Universal Router (top-level only; inner sub-cmds
+  // are NOT decoded on-device in v0.3)
+  "0xac9650d8", "0x5ae401dc", "0x3593564c", "0x24856bc3",
+]);
+
 export function decodeSelector(dataHex: string): string | null {
   if (!dataHex || dataHex.length < 10) return null;
   const sel = dataHex.slice(0, 10).toLowerCase();
   return KNOWN[sel] ?? null;
+}
+
+/** True iff the cartridge ROM (v0.3+) also knows how to decode this
+ *  selector at the ABI level. Pure informational; the popup uses it
+ *  to render a "verified on cartridge" badge so the user knows the
+ *  rendered function name will be the SAME on-device. */
+export function isFirmwareDecoded(dataHex: string): boolean {
+  if (!dataHex || dataHex.length < 10) return false;
+  return FIRMWARE_DECODED.has(dataHex.slice(0, 10).toLowerCase());
 }
 
 /** Returns the plain function name (without types), e.g. "transfer" for

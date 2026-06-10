@@ -6,6 +6,7 @@
 #include "../crypto/ethereum.h"
 #include "../crypto/eth_tx.h"
 #include "../crypto/eth_abi.h"
+#include "../crypto/abi_decoder.h"
 #include "../crypto/eip712.h"
 
 #include <gba_input.h>
@@ -499,6 +500,7 @@ static void render_decoded_page(const eth_tx* tx,
 static void render_page0(const eth_tx* tx, const chain_info* ci,
                          const u8 signing_hash[32],
                          const eth_abi_call* abi,
+                         const abi_decoded_t* decoded_v3,
                          const tx_meta* meta,
                          u32 extra_pages) {
     char buf[64];
@@ -580,13 +582,36 @@ static void render_page0(const eth_tx* tx, const chain_info* ci,
      * shows up with R on the DECODED page. If is_infinite or
      * approveAll, the "(!)" in abi_summary() already warns the user on
      * page 0. */
+    /* === data: line + trust badge ==========================================
+     * Most important UX bit on this page: the user MUST be able to tell
+     * "the cartridge understands this calldata" from "the cartridge does
+     * NOT understand it and I'm trusting the browser/dApp". Whenever
+     * there is any calldata at all, row 17 carries a single-line badge
+     * that's visually impossible to confuse with the other one:
+     *
+     *   [+ PARSED on-device +]    <- cartridge decoded the args
+     *   [+ DECODED on-device +]   <- legacy v0.2 decoder hit
+     *   [!! BLIND SIGN !!]        <- nobody decoded; raw hex only
+     *
+     * Tx without calldata (plain ETH transfer) shows nothing extra:
+     * there is nothing to decode in the first place. */
     if (abi && abi->kind != ETH_ABI_UNKNOWN) {
         snprintf(buf, sizeof(buf), "  data: %s", abi_summary(abi));
         text_at(0, 16, buf);
-    } else {
+        text_at(0, 17, "  [+ DECODED on-device +]");
+    } else if (decoded_v3 && decoded_v3->fn) {
+        snprintf(buf, sizeof(buf), "  data: %.18s%s",
+                 decoded_v3->fn->func_name,
+                 (decoded_v3->fn->flags & ABI_FN_FLAG_DRAINER) ? " (!)" : "");
+        text_at(0, 16, buf);
+        text_at(0, 17, "  [+ PARSED on-device +]");
+    } else if (tx->data_len > 0) {
         snprintf(buf, sizeof(buf), "  data: %lu bytes",
                  (unsigned long)tx->data_len);
         text_at(0, 16, buf);
+        text_at(0, 17, "  [!! BLIND SIGN !!]");
+    } else {
+        text_at(0, 16, "  data: (none)");
     }
 
     /* === TX ID =============================================================
@@ -604,21 +629,47 @@ static void render_page0(const eth_tx* tx, const chain_info* ci,
     }
 
     if (extra_pages > 0) {
-        text_statusbar((abi && abi->kind != ETH_ABI_UNKNOWN)
-                       ? "A sign  B cancel  R decoded >"
-                       : "A sign  B cancel  R data >");
+        const char* hint;
+        if (abi && abi->kind != ETH_ABI_UNKNOWN) {
+            hint = "A sign  B cancel  R decoded >";
+        } else if (decoded_v3 && decoded_v3->fn) {
+            hint = "A sign  B cancel  R parsed >";
+        } else {
+            /* Blind: name the hex view as such in the hint, so the
+             * user doesn't think "R data >" is just an extra detail
+             * page. Matches the [!! BLIND SIGN !!] badge above. */
+            hint = "A sign  B cancel  R BLIND hex >";
+        }
+        text_statusbar(hint);
     } else {
         text_statusbar("A sign  B cancel");
     }
 }
 
-static void render_data_page(const eth_tx* tx, u32 page, u32 npages) {
+/* The hex view of the calldata serves two purposes that the user MUST
+ * be able to tell apart:
+ *
+ *   - is_blind=1: the cartridge did NOT recognise the selector. This
+ *     view is the ONLY thing the user has, and pressing A here means
+ *     trusting the host about what these bytes do. Titlebar says
+ *     "BLIND!" and the page counter is suffixed "(blind)" so the
+ *     mode is clear on every page. The page 0 of the header already
+ *     showed the full BLIND SIGN badge.
+ *
+ *   - is_blind=0: the cartridge DID decode the calldata; this hex
+ *     page is just an audit-only secondary view reached via L+R from
+ *     the parsed page. Titlebar "RAW HEX" + "(audit)" suffix so the
+ *     user does not mistake it for the primary source of truth.
+ */
+static void render_data_page(const eth_tx* tx, u32 page, u32 npages,
+                             int is_blind) {
     char buf[40];
     text_clear();
-    text_titlebar("TX DATA", "HEX");
+    text_titlebar("TX DATA", is_blind ? "BLIND!" : "RAW HEX");
 
-    snprintf(buf, sizeof(buf), "  page %lu / %lu",
-             (unsigned long)(page + 1), (unsigned long)npages);
+    snprintf(buf, sizeof(buf), "  page %lu / %lu  %s",
+             (unsigned long)(page + 1), (unsigned long)npages,
+             is_blind ? "(blind sign)" : "(audit)");
     text_at(0, 2, buf);
 
     u32 offset = page * DATA_BYTES_PER_PAGE;
@@ -640,6 +691,196 @@ static void render_data_page(const eth_tx* tx, u32 page, u32 npages) {
     }
 }
 
+/* =======================================================================
+ * Generic "PARSED" page driven by abi_decoder.c. Used as a fallback for
+ * selectors that the legacy eth_abi_decode() does NOT cover (v0.3): all
+ * the Uniswap V2 router fns, ERC-2612 permit, multicall, Universal Router
+ * execute, etc. Layout is intentionally flat-indented (same UX as the
+ * EIP-712 parsed view shipped in v0.2) so the user does not have to learn
+ * a new pattern per function.
+ * ======================================================================= */
+
+/* Significant byte count per uintN/intN type. Used to detect "all ones"
+ * (rendered as "MAX (infinite)") and to size the displayed value. Entries
+ * left zero are non-uint types: format_abi_uint() will refuse them. */
+static const u8 ABI_T_NBYTES[] = {
+    [ABI_T_UINT8]            = 1,
+    [ABI_T_UINT16]           = 2,
+    [ABI_T_UINT24]           = 3,
+    [ABI_T_UINT32]           = 4,
+    [ABI_T_UINT48]           = 6,
+    [ABI_T_UINT64]           = 8,
+    [ABI_T_UINT128]          = 16,
+    [ABI_T_UINT160]          = 20,
+    [ABI_T_UINT256]          = 32,
+    [ABI_T_INT256]           = 32,
+    [ABI_T_DEADLINE_UINT256] = 32,
+};
+
+static void format_abi_uint(const u8 raw[32], abi_type_t type,
+                            char* out, u32 cap) {
+    if ((u32)type >= sizeof(ABI_T_NBYTES) || ABI_T_NBYTES[type] == 0) {
+        snprintf(out, cap, "?");
+        return;
+    }
+    u8 nb = ABI_T_NBYTES[type];
+    /* "Infinite approval" detection: any uint of >= 128 bits whose
+     * meaningful bytes are all 0xFF. Mirrors the same heuristic the
+     * EIP-712 parser uses for Permit2's uint160 amount. */
+    if (nb >= 16) {
+        int all_ones = 1;
+        for (u32 i = 32 - nb; i < 32; i++) {
+            if (raw[i] != 0xff) { all_ones = 0; break; }
+        }
+        if (all_ones) { snprintf(out, cap, "MAX (infinite)"); return; }
+    }
+    format_uint256(raw, out, cap);
+}
+
+/* Renders one decoded argument starting at `row`. Returns the next free
+ * row. Bounded to row <= 18 by the caller. */
+static u32 render_one_arg(u32 row, const abi_decoded_arg_t* a,
+                          const char* name) {
+    char buf[40];
+
+    /* Label line. Long names won't wrap; they're truncated in the
+     * format string. */
+    snprintf(buf, sizeof(buf), "  %.20s:", name);
+    text_at(0, row++, buf);
+
+    switch (a->type) {
+        case ABI_T_ADDRESS: {
+            char addr[43];
+            eth_address_to_eip55(&a->v.raw[12], addr);
+            text_printf_at(2, row++, "%.22s", addr);
+            text_printf_at(2, row++, "%s", addr + 22);
+            break;
+        }
+        case ABI_T_BOOL: {
+            text_printf_at(4, row++, "%s",
+                           a->v.raw[31] ? "true (grant)" : "false (revoke)");
+            break;
+        }
+        case ABI_T_UINT8: case ABI_T_UINT16: case ABI_T_UINT24:
+        case ABI_T_UINT32: case ABI_T_UINT48: case ABI_T_UINT64:
+        case ABI_T_UINT128: case ABI_T_UINT160: case ABI_T_UINT256:
+        case ABI_T_INT256:
+        case ABI_T_DEADLINE_UINT256: {
+            char val[28];
+            format_abi_uint(a->v.raw, a->type, val, sizeof(val));
+            text_printf_at(4, row++, "%s", val);
+            if (a->type == ABI_T_DEADLINE_UINT256) {
+                /* GBA has no RTC; we cannot render "in X mins" without
+                 * trusting the host. Just label the meaning. */
+                text_at(4, row++, "(unix timestamp)");
+            }
+            break;
+        }
+        case ABI_T_BYTES4: {
+            text_printf_at(4, row++, "0x%02x%02x%02x%02x",
+                           a->v.raw[0], a->v.raw[1], a->v.raw[2], a->v.raw[3]);
+            break;
+        }
+        case ABI_T_BYTES32: {
+            /* 32 bytes = 64 hex chars; split as 22+22+20 to fit 30-col rows
+             * (with 4 leading spaces of indent). */
+            text_printf_at(4, row++,
+                           "0x%02x%02x%02x%02x%02x%02x%02x%02x%02x",
+                           a->v.raw[0], a->v.raw[1], a->v.raw[2],
+                           a->v.raw[3], a->v.raw[4], a->v.raw[5],
+                           a->v.raw[6], a->v.raw[7], a->v.raw[8]);
+            text_printf_at(4, row++,
+                           "%02x%02x%02x..%02x%02x%02x%02x",
+                           a->v.raw[9],  a->v.raw[10], a->v.raw[11],
+                           a->v.raw[28], a->v.raw[29], a->v.raw[30], a->v.raw[31]);
+            break;
+        }
+        case ABI_T_BYTES:
+        case ABI_T_STRING: {
+            text_printf_at(4, row++, "%u bytes", (unsigned)a->v.dyn.count);
+            break;
+        }
+        case ABI_T_BYTES_SUB_COUNT: {
+            text_printf_at(4, row++, "%u bytes (sub-cmd)",
+                           (unsigned)a->v.dyn.count);
+            break;
+        }
+        case ABI_T_BYTES_ARRAY_SUB_COUNT: {
+            text_printf_at(4, row++, "%u sub-cmd%s",
+                           (unsigned)a->v.dyn.count,
+                           a->v.dyn.count == 1 ? "" : "s");
+            break;
+        }
+        case ABI_T_ADDRESS_ARRAY: {
+            text_printf_at(4, row++, "%u hop%s",
+                           (unsigned)a->v.dyn.count,
+                           a->v.dyn.count == 1 ? "" : "s");
+            /* Up to 3 hops fit comfortably; beyond that we hint "(+)". */
+            u32 nshow = a->v.dyn.count > 3 ? 3 : a->v.dyn.count;
+            for (u32 j = 0; j < nshow && row < 18; j++) {
+                const u8* p = a->v.dyn.ptr + j * 32 + 12;
+                text_printf_at(4, row++,
+                               "[%u] 0x%02x%02x%02x..%02x%02x",
+                               (unsigned)j, p[0], p[1], p[2], p[18], p[19]);
+            }
+            if (a->v.dyn.count > nshow && row < 18) {
+                text_at(4, row++, "(+more)");
+            }
+            break;
+        }
+        default:
+            text_at(4, row++, "(unsupported type)");
+            break;
+    }
+    return row;
+}
+
+static void render_parsed_page(const eth_tx* tx,
+                               const chain_info* ci,
+                               const abi_decoded_t* d,
+                               const tx_meta* meta,
+                               u32 extra_pages_after) {
+    (void)tx; (void)ci; (void)meta;
+
+    text_clear();
+    /* Titlebar sub-status is always "PARSED" so it lines up visually
+     * with "DECODED" (legacy pretty page) and "BLIND!" (hex when
+     * the cartridge could NOT decode). The function name moves into
+     * the body where there's room. */
+    text_titlebar("TX DATA", "PARSED");
+
+    u32 row = 2;
+    char buf[40];
+    snprintf(buf, sizeof(buf), "  function: %.18s",
+             d->fn->func_name);
+    text_at(0, row++, buf);
+    row++;  /* blank */
+
+    if (d->fn->flags & ABI_FN_FLAG_DRAINER) {
+        /* Same visual treatment as the legacy "INFINITE APPROVAL" /
+         * "ALL NFTS APPROVED" boxes — boxed warning so the user
+         * cannot miss it. */
+        text_at(0, row++, "  +----------------------+");
+        text_at(0, row++, "  |  DRAINER-GRADE CALL  |");
+        text_at(0, row++, "  +----------------------+");
+        row++;
+    }
+
+    for (u32 i = 0; i < d->num_args; i++) {
+        if (row >= 17) {
+            text_at(0, row, "  (+more args — see hex)");
+            break;
+        }
+        row = render_one_arg(row, &d->args[i], d->fn->args[i].name);
+    }
+
+    if (extra_pages_after > 0) {
+        text_statusbar("A sign  B cancel  R> raw hex");
+    } else {
+        text_statusbar("A sign  B cancel  L< back");
+    }
+}
+
 int confirm_tx(const eth_tx* tx, const tx_meta* meta) {
     /* Pre-decode of the data field. If we recognise a known selector
      * we insert a "DECODED" page between page 0 (header) and the hex
@@ -648,8 +889,23 @@ int confirm_tx(const eth_tx* tx, const tx_meta* meta) {
     int has_abi = eth_abi_decode(tx->data, tx->data_len, &abi);
     if (!has_abi) abi.kind = ETH_ABI_UNKNOWN;
 
+    /* v0.3: generic ABI decoder. Only used as a FALLBACK when the
+     * legacy decoder above didn't claim the selector — this keeps the
+     * specialised "INFINITE APPROVAL" / "ALL NFTS APPROVED" pretty
+     * rendering intact for the 7 selectors v0.2 already covered, while
+     * adding parsed views for the ~18 new selectors (Uniswap V2 router,
+     * permit, multicall, Universal Router execute, ...). */
+    abi_decoded_t decoded;
+    int has_parsed = 0;
+    if (!has_abi) {
+        if (abi_decode(tx->data, tx->data_len, &decoded) == ABI_DEC_OK) {
+            has_parsed = 1;
+        }
+    }
+
     u32 hex_pages   = data_total_pages(tx->data_len);
-    u32 extra_pages = (has_abi ? 1u : 0u) + hex_pages;
+    u32 has_decoded_extra = (has_abi || has_parsed) ? 1u : 0u;
+    u32 extra_pages = has_decoded_extra + hex_pages;
 
     /* Page layout:
      *   cur_page == 0:                          header
@@ -682,12 +938,20 @@ int confirm_tx(const eth_tx* tx, const tx_meta* meta) {
     for (;;) {
         if (dirty) {
             if (cur_page == 0) {
-                render_page0(tx, ci, signing_hash, &abi, meta, extra_pages);
+                render_page0(tx, ci, signing_hash, &abi,
+                             has_parsed ? &decoded : 0, meta, extra_pages);
             } else if (has_abi && cur_page == 1) {
                 render_decoded_page(tx, ci, &abi, meta, extra_pages - 1);
+            } else if (has_parsed && cur_page == 1) {
+                render_parsed_page(tx, ci, &decoded, meta, extra_pages - 1);
             } else {
-                u32 hex_idx = cur_page - 1 - (has_abi ? 1u : 0u);
-                render_data_page(tx, hex_idx, hex_pages);
+                u32 hex_idx = cur_page - 1 - has_decoded_extra;
+                /* Blind iff nothing decoded the calldata: the only thing
+                 * the user sees of the data field is these hex bytes,
+                 * so the hex view's titlebar / page counter shout
+                 * "BLIND!" too. */
+                int is_blind = !has_abi && !has_parsed;
+                render_data_page(tx, hex_idx, hex_pages, is_blind);
             }
             dirty = 0;
         }

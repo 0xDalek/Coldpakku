@@ -3,11 +3,11 @@
 # Builds all artifacts of a Coldpakku release and drops them under
 # releases/ ready to be uploaded to a GitHub release.
 #
-# Produces (for VERSION=0.1.0):
-#   releases/gba-signer-v0.1.0.gba                    (the GBA ROM)
-#   releases/gba-signer-pico-bridge-v0.1.0.zip        (Pico bridge bundle)
-#   releases/gba-signer-extension-v0.1.0.zip          (browser extension)
-#   releases/RELEASE_NOTES_v0.1.0.md                  (release notes copy)
+# Produces (for VERSION=0.3.0):
+#   releases/coldpakku-v0.3.0.gba                     (the GBA ROM)
+#   releases/coldpakku-pico-bridge-v0.3.0.zip         (Pico bridge bundle)
+#   releases/coldpakku-extension-v0.3.0.zip           (browser extension)
+#   releases/RELEASE_NOTES_v0.3.0.md                  (release notes copy)
 #
 # Requirements:
 #   - DEVKITPRO and DEVKITARM in env (or auto-detected from .devkitpro/)
@@ -15,11 +15,11 @@
 #   - python3 (used to ZIP folders; no `zip` binary required)
 #
 # Usage:
-#   ./scripts/build_release.sh            # uses VERSION=0.1.0
-#   VERSION=0.2.0 ./scripts/build_release.sh
+#   ./scripts/build_release.sh            # uses VERSION=0.3.0
+#   VERSION=0.4.0 ./scripts/build_release.sh
 set -euo pipefail
 
-VERSION="${VERSION:-0.1.0}"
+VERSION="${VERSION:-0.3.0}"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -55,9 +55,9 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as zf:
 }
 
 echo
-echo "==[ 1/4 ]== Building GBA ROM (gba-signer-v${VERSION}.gba)"
+echo "==[ 1/4 ]== Building GBA ROM (coldpakku-v${VERSION}.gba)"
 ./build.sh
-cp gba-signer.gba "releases/gba-signer-v${VERSION}.gba"
+cp coldpakku.gba "releases/coldpakku-v${VERSION}.gba"
 
 echo
 echo "==[ 2/4 ]== Bundling Pico bridge files (pico-bridge-v${VERSION}.zip)"
@@ -70,12 +70,12 @@ if [ -f docs/PICO_BRIDGE_QUICKSTART.md ]; then
 else
     echo "WARN: docs/PICO_BRIDGE_QUICKSTART.md not found, skipping README.txt"
 fi
-rm -f "releases/gba-signer-pico-bridge-v${VERSION}.zip"
-zipdir "$PICO_DIR" "releases/gba-signer-pico-bridge-v${VERSION}.zip"
+rm -f "releases/coldpakku-pico-bridge-v${VERSION}.zip"
+zipdir "$PICO_DIR" "releases/coldpakku-pico-bridge-v${VERSION}.zip"
 rm -rf "$PICO_DIR"
 
 echo
-echo "==[ 3/4 ]== Building extension ZIP (gba-signer-extension-v${VERSION}.zip)"
+echo "==[ 3/4 ]== Building extension ZIP (coldpakku-extension-v${VERSION}.zip)"
 (
     cd extension
     if [ ! -d node_modules ]; then
@@ -84,8 +84,8 @@ echo "==[ 3/4 ]== Building extension ZIP (gba-signer-extension-v${VERSION}.zip)"
     rm -rf dist
     npm run build
 )
-rm -f "releases/gba-signer-extension-v${VERSION}.zip"
-zipdir "extension/dist" "releases/gba-signer-extension-v${VERSION}.zip"
+rm -f "releases/coldpakku-extension-v${VERSION}.zip"
+zipdir "extension/dist" "releases/coldpakku-extension-v${VERSION}.zip"
 
 echo
 echo "==[ 4/4 ]== Copying release notes"

@@ -1,5 +1,5 @@
-#ifndef GBA_SIGNER_TYPES_H
-#define GBA_SIGNER_TYPES_H
+#ifndef COLDPAKKU_TYPES_H
+#define COLDPAKKU_TYPES_H
 
 #include <gba_types.h>
 #include <stdint.h>

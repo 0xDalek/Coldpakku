@@ -7,7 +7,7 @@ role of "the other GBA" on the cable.
 
 Typical usage (in another shell):
 
-    mgba -l 0.0.0.0:12345 gba-signer.gba
+    mgba -l 0.0.0.0:12345 coldpakku.gba
 
 Then in Python:
 

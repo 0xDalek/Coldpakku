@@ -31,7 +31,7 @@ Two paths, pick whichever your environment allows.
 ```bash
 export DEVKITPRO=/opt/devkitpro
 export DEVKITARM=$DEVKITPRO/devkitARM
-make           # outputs gba-signer.gba
+make           # outputs coldpakku.gba
 make run       # launches mgba-qt
 make socket    # launches mGBA headless with socket :12345
 ```
@@ -61,7 +61,7 @@ npm run build           # outputs dist/
 
 ```bash
 ./scripts/build_release.sh        # outputs releases/*.{gba,zip,md}
-# uses VERSION=0.1.0 by default; override with: VERSION=0.2.0 ./scripts/build_release.sh
+# uses VERSION=0.3.0 by default; override with: VERSION=0.4.0 ./scripts/build_release.sh
 ```
 
 This produces four artifacts ready to upload to a GitHub release: the
