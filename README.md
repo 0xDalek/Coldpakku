@@ -24,9 +24,9 @@ them from the [latest GitHub release](../../releases/latest):
 
 | File | Where it goes |
 |---|---|
-| `coldpakku-v0.3.0.gba`               | Copy to your flashcart's SD card (EZ-Flash, EverDrive, etc.) |
-| `coldpakku-pico-bridge-v0.3.0.zip`   | Unzip and follow [`docs/PICO_BRIDGE_QUICKSTART.md`](docs/PICO_BRIDGE_QUICKSTART.md) (5 min) |
-| `coldpakku-extension-v0.3.0.zip`     | Unzip, then `chrome://extensions/` → Developer mode → **Load unpacked** → pick the unzipped folder |
+| `coldpakku-v0.3.1.gba`               | Copy to your flashcart's SD card (EZ-Flash, EverDrive, etc.) |
+| `coldpakku-pico-bridge-v0.3.1.zip`   | Unzip and follow [`docs/PICO_BRIDGE_QUICKSTART.md`](docs/PICO_BRIDGE_QUICKSTART.md) (5 min) |
+| `coldpakku-extension-v0.3.1.zip`     | Unzip, then `chrome://extensions/` → Developer mode → **Load unpacked** → pick the unzipped folder |
 
 ### Hardware checklist
 
@@ -141,10 +141,22 @@ simpler, cheaper, and faster.
   - blob = `"GBAW" ‖ ver ‖ salt ‖ nonce ‖ ct ‖ mac ‖ crc32` (133 B)
 - **Wrong PIN does NOT decrypt**: MAC is checked first, so failure
   returns "wrong PIN" instead of producing a "ghost wallet".
-- **3 failed PIN attempts** in a single session wipe SRAM. A physical
-  attacker who extracts the SRAM can still brute-force offline;
-  PBKDF2 with 10 000 iterations is what makes that expensive
-  (~3–14 h for a 7-digit PIN on a fast CPU).
+- **3 failed PIN attempts** in a single session wipe SRAM — but this
+  is an *on-device* control only. **It does not protect a stolen
+  cartridge.** Anyone who dumps the SRAM (trivial with a flashcart)
+  gets `salt ‖ nonce ‖ enc_seed ‖ MAC` and can brute-force the PIN
+  offline against the MAC, with no rate limit and no wipe. The
+  counter is also per-session (not persisted across reboots).
+  PBKDF2-HMAC-SHA512 × 10 000 is only ~milliseconds per guess on a
+  PC, and the PIN is just 4–8 digits, so an offline attack on a
+  4-digit PIN takes **seconds** and a full 8-digit space **minutes**
+  on commodity hardware (and far less on a GPU). **Treat the encrypted
+  seed in SRAM as offering little protection against a determined
+  attacker with physical possession of the cartridge**; the real
+  defence is keeping the cartridge physically safe and not relying on
+  the PIN as a hardware-wallet-grade secure element. Stronger KDF
+  (Argon2id), higher iteration counts, and longer / alphanumeric PINs
+  are tracked in the roadmap.
 - **Private key lives only in RAM** (`g_node.priv`) for the unlocked
   session, zeroized on power-off and on lock. micro-ecc zeroes its
   temporaries too.
@@ -157,6 +169,19 @@ verifies them byte-for-byte, and shows the message fields flat-indented
 on the confirm screen. A mismatch hard-blocks the signature. Hold
 **L+R** if you want to toggle back to the raw hex view. See
 [`docs/PROTOCOL.md`](docs/PROTOCOL.md#typed_data-payload-v7).
+
+> **Blind-signing caveat.** Typed data the on-device parser cannot
+> handle — anything with arrays (Permit2 `PermitBatch`, OpenSea
+> Seaport orders, many DeFi signatures), or when the host sends no
+> TLV tree — falls back to **blind signing**: the device signs the
+> host-supplied `domainSeparator` / `messageHash` and shows the
+> host-supplied "pretty text", with **no on-device verification** and
+> **no chain-lock enforcement**. A compromised bridge or dApp can show
+> benign text while you sign a draining permit. Off-chain signatures
+> (Permit / Permit2 / Seaport) are the dominant wallet-drainer vector
+> today, so treat the on-screen "could NOT parse — trust the host"
+> warning as a hard stop unless you fully trust the requester.
+> Expanding parser coverage to arrays is on the roadmap.
 
 `eth_sendTransaction` calldata is **decoded on-device** for ~25 known
 selectors (v0.3): ERC-20 (`transfer` / `approve`-with-`MAX` /

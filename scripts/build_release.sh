@@ -3,11 +3,11 @@
 # Builds all artifacts of a Coldpakku release and drops them under
 # releases/ ready to be uploaded to a GitHub release.
 #
-# Produces (for VERSION=0.3.0):
-#   releases/coldpakku-v0.3.0.gba                     (the GBA ROM)
-#   releases/coldpakku-pico-bridge-v0.3.0.zip         (Pico bridge bundle)
-#   releases/coldpakku-extension-v0.3.0.zip           (browser extension)
-#   releases/RELEASE_NOTES_v0.3.0.md                  (release notes copy)
+# Produces (for VERSION=0.3.1):
+#   releases/coldpakku-v0.3.1.gba                     (the GBA ROM)
+#   releases/coldpakku-pico-bridge-v0.3.1.zip         (Pico bridge bundle)
+#   releases/coldpakku-extension-v0.3.1.zip           (browser extension)
+#   releases/RELEASE_NOTES_v0.3.1.md                  (release notes copy)
 #
 # Requirements:
 #   - DEVKITPRO and DEVKITARM in env (or auto-detected from .devkitpro/)
@@ -15,11 +15,11 @@
 #   - python3 (used to ZIP folders; no `zip` binary required)
 #
 # Usage:
-#   ./scripts/build_release.sh            # uses VERSION=0.3.0
+#   ./scripts/build_release.sh            # uses VERSION=0.3.1
 #   VERSION=0.4.0 ./scripts/build_release.sh
 set -euo pipefail
 
-VERSION="${VERSION:-0.3.0}"
+VERSION="${VERSION:-0.3.1}"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

@@ -124,12 +124,21 @@ abi_dec_status_t abi_decode(const u8* data, u32 data_len, abi_decoded_t* out) {
         /* Offsets are required to be 32-byte aligned by the Solidity
          * ABI; an off-alignment is a strong sign of malformed calldata. */
         if (offset & 0x1F) return ABI_DEC_ERR_BAD_OFFSET;
-        if (offset + 32 > args_len) return ABI_DEC_ERR_TRUNCATED;
+        /* Overflow-safe bound check: `offset + 32 > args_len` would wrap
+         * for attacker-supplied offsets near UINT32_MAX (e.g. 0xFFFFFFE0)
+         * and let a wrapped pointer (args_base + offset) read out of
+         * bounds. Compare without ever adding to `offset`. */
+        if (offset > args_len || args_len - offset < 32) return ABI_DEC_ERR_TRUNCATED;
 
         u32 length;
         if (!read_slot_as_u32(args_base + offset, &length)) return ABI_DEC_ERR_BAD_OFFSET;
 
         const u8* payload = args_base + offset + 32;
+        /* Bytes available for the tail payload after the 32 B length
+         * prefix. Safe: we proved args_len - offset >= 32 above, so this
+         * never underflows and all payload checks below stay in u32
+         * range without overflow. */
+        const u32 tail_avail = args_len - offset - 32;
 
         switch (type) {
             case ABI_T_BYTES:
@@ -138,7 +147,7 @@ abi_dec_status_t abi_decode(const u8* data, u32 data_len, abi_decoded_t* out) {
                 /* `length` is the byte count. The actual storage is
                  * padded up to a multiple of 32, but we only need
                  * length bytes for rendering. */
-                if (offset + 32 + length > args_len) return ABI_DEC_ERR_TRUNCATED;
+                if (length > tail_avail) return ABI_DEC_ERR_TRUNCATED;
                 out->args[i].v.dyn.count = length;
                 out->args[i].v.dyn.ptr   = payload;
                 break;
@@ -151,7 +160,7 @@ abi_dec_status_t abi_decode(const u8* data, u32 data_len, abi_decoded_t* out) {
                  * is at most ~5 hops, MAX 64 keeps headroom. */
                 if (length > 64) return ABI_DEC_ERR_UNSUP_TYPE;
                 u32 payload_len = length * 32u;
-                if (offset + 32 + payload_len > args_len) return ABI_DEC_ERR_TRUNCATED;
+                if (payload_len > tail_avail) return ABI_DEC_ERR_TRUNCATED;
                 /* We validate each address's 12 B high pad lazily in
                  * the formatter (lets us still render the count even
                  * if one element is dirty, which the user can spot). */
@@ -168,7 +177,7 @@ abi_dec_status_t abi_decode(const u8* data, u32 data_len, abi_decoded_t* out) {
                  * don't promise a count that's impossibly large. */
                 if (length > 64) return ABI_DEC_ERR_UNSUP_TYPE;
                 u32 head_arr_len = length * 32u;
-                if (offset + 32 + head_arr_len > args_len) return ABI_DEC_ERR_TRUNCATED;
+                if (head_arr_len > tail_avail) return ABI_DEC_ERR_TRUNCATED;
                 out->args[i].v.dyn.count = length;
                 out->args[i].v.dyn.ptr   = payload;
                 break;

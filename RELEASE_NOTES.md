@@ -1,4 +1,4 @@
-# Coldpakku v0.3.0
+# Coldpakku v0.3.1
 
 Coldpakku is an Ethereum hardware wallet that runs
 on a Game Boy Advance. The GBA holds the 12-word BIP-39 seed in encrypted
@@ -10,9 +10,9 @@ Chromium extension exposes the wallet to any dApp via EIP-1193 + EIP-6963.
 
 | Artifact | Where it goes |
 |---|---|
-| `coldpakku-v0.3.0.gba`               | Copy to your flashcart's SD card (~205 KB). |
-| `coldpakku-pico-bridge-v0.3.0.zip`   | Unzip; follow the included `README.txt` (5 min). |
-| `coldpakku-extension-v0.3.0.zip`     | Unzip; load via `chrome://extensions/` → Developer mode → **Load unpacked**. |
+| `coldpakku-v0.3.1.gba`               | Copy to your flashcart's SD card (~205 KB). |
+| `coldpakku-pico-bridge-v0.3.1.zip`   | Unzip; follow the included `README.txt` (5 min). |
+| `coldpakku-extension-v0.3.1.zip`     | Unzip; load via `chrome://extensions/` → Developer mode → **Load unpacked**. |
 
 See the project [README](README.md) for the full first-use guide.
 
@@ -39,6 +39,14 @@ Tested on a physical GBA + Pi Pico + Chromium extension. Working flows:
 
 ### Security
 
+- **v0.3.1 fix — integer overflow in the on-device ABI decoder.** A
+  crafted dynamic-type offset near `UINT32_MAX` made the bound check
+  `offset + 32 > args_len` wrap, allowing a small out-of-bounds read
+  from attacker-controlled calldata *before* the user approves. On the
+  GBA (no MMU) the impact was a likely crash/misrender rather than
+  disclosure, but it was a real memory-safety bug reachable from an
+  untrusted bridge. Fixed with overflow-safe bound checks in
+  `src/crypto/abi_decoder.c`. **Upgrade from v0.3.0.**
 - **PBKDF2-stretched PIN** — the seed is encrypted with ChaCha20 under
   a key derived via PBKDF2-HMAC-SHA512 (10 000 iterations) with a
   16-byte random salt. The cartridge blob includes an HMAC-SHA256 over
@@ -224,19 +232,31 @@ walks through the legacy hex pages, exactly like v0.2.
   source and verify the resulting `coldpakku.gba` SHA-256 matches the
   public release.
 - **No secure element** — the GBA has no MMU, NX, ASLR, or stack
-  canaries. A memory-corruption bug in our parsers would be terminal.
-  No such bug is known; bounds-checking is consistent throughout, but
-  defence-in-depth is limited.
+  canaries. A memory-corruption bug in our parsers would be terminal,
+  and there is no defence-in-depth to contain one. Bounds-checking is
+  applied consistently, but it is the *only* line of defence (one such
+  overflow was found and fixed in v0.3.1; see Security above). Audit
+  the parsers before trusting this with meaningful funds.
 - **Extension not on the Chrome Web Store yet.** Install via
   "Load unpacked".
 - **No native UF2 firmware for the Pico** — you must flash MicroPython
   (drag-and-drop UF2) and then copy `main.py`. See the Pico quickstart.
 - **EIP-2930 (access list type 1) not implemented** — EIP-1559 (type 2)
   and legacy work.
-- **EIP-712 arrays not supported by the on-device parser yet** —
-  Permit2 `PermitBatch` and OpenSea Seaport orders fall back to blind
-  signing of the host-supplied hashes (with the legacy warning).
-  Atomic types, strings, dynamic bytes and nested structs are covered.
+- **EIP-712 blind signing is the largest residual attack surface.**
+  Typed data the on-device parser cannot handle — anything with arrays
+  (Permit2 `PermitBatch`, OpenSea Seaport orders), or when the host
+  sends no TLV tree — falls back to **blind signing**: the device signs
+  the host-supplied `domainSeparator` / `messageHash` and displays the
+  host-supplied text, with **no on-device verification and no
+  chain-lock enforcement**. Off-chain signatures (Permit / Permit2 /
+  Seaport) are the dominant wallet-drainer vector today, so a
+  compromised host can show benign text while you blind-sign a draining
+  permit. The device shows a "could NOT parse — trust the host"
+  warning, and for the *supported* subset it recomputes the hashes and
+  hard-blocks on mismatch. Atomic types, strings, dynamic bytes and
+  nested structs are covered; expanding to arrays + a hold-to-sign
+  gesture for blind typed data is on the roadmap.
 - **`eth_sendTransaction` selectors outside the v0.3 table are
   blind-signed.** The 25-entry on-device table covers ERC-20,
   ERC-721 `setApprovalForAll`, WETH, ERC-2612 Permit, Uniswap V2
@@ -248,6 +268,17 @@ walks through the legacy hex pages, exactly like v0.2.
 - **Single account** — derivation path is fixed to `m/44'/60'/0'/0/0`.
 - **BIP-39 passphrase ("25th word") not exposed in the UI.**
 - **PIN attempt counter is per-session**, not persisted across boots.
+- **Weak resistance to physical theft of the cartridge.** The 3-strike
+  SRAM wipe is an on-device control only. Anyone who dumps SRAM (easy
+  with a flashcart) gets `salt ‖ nonce ‖ enc_seed ‖ MAC` and can
+  brute-force the PIN offline against the MAC — no rate limit, no wipe.
+  PBKDF2-HMAC-SHA512 × 10 000 is ~milliseconds per guess on a PC and
+  the PIN is only 4–8 digits, so a 4-digit PIN falls in **seconds** and
+  the full 8-digit space in **minutes** on commodity hardware. The
+  encrypted seed in SRAM should be treated as offering little
+  protection once the cartridge is in an attacker's hands. Argon2id /
+  higher iteration counts / longer-or-alphanumeric PINs are on the
+  roadmap; until then, keep the cartridge physically secure.
 
 ## Roadmap
 

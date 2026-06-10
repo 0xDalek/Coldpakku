@@ -61,7 +61,7 @@ npm run build           # outputs dist/
 
 ```bash
 ./scripts/build_release.sh        # outputs releases/*.{gba,zip,md}
-# uses VERSION=0.3.0 by default; override with: VERSION=0.4.0 ./scripts/build_release.sh
+# uses VERSION=0.3.1 by default; override with: VERSION=0.4.0 ./scripts/build_release.sh
 ```
 
 This produces four artifacts ready to upload to a GitHub release: the

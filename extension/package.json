@@ -1,14 +1,14 @@
 {
   "name": "coldpakku-extension",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "Browser extension that turns a Game Boy Advance into an Ethereum hardware wallet via WebSerial.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "release": "vite build && cd dist && zip -r ../../releases/coldpakku-extension-v0.3.0.zip ."
+    "release": "vite build && cd dist && zip -r ../../releases/coldpakku-extension-v0.3.1.zip ."
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.36",
